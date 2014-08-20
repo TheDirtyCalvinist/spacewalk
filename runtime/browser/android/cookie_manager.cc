@@ -11,13 +11,16 @@
 #include "base/android/jni_string.h"
 #include "base/bind.h"
 #include "base/bind_helpers.h"
+#include "base/files/file_path.h"
 #include "base/lazy_instance.h"
 #include "base/message_loop/message_loop.h"
 #include "base/message_loop/message_loop_proxy.h"
+#include "base/path_service.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/thread_restrictions.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/cookie_store_factory.h"
 #include "content/public/common/url_constants.h"
 #include "jni/XWalkCookieManager_jni.h"
 #include "net/cookies/cookie_monster.h"
@@ -58,6 +61,7 @@ class CookieManager {
   bool HasCookies();
   bool AllowFileSchemeCookies();
   void SetAcceptFileSchemeCookies(bool accept);
+  void ResetCookieStore();
 
  private:
   friend struct base::DefaultLazyInstanceTraits<CookieManager>;
@@ -300,6 +304,30 @@ void CookieManager::SetAcceptFileSchemeCookies(bool accept) {
   cookie_monster_->SetEnableFileScheme(accept);
 }
 
+void CookieManager::ResetCookieStore() {
+  // Prepare the cookie store.
+  base::FilePath user_data_dir;
+  if (!PathService::Get(base::DIR_ANDROID_APP_DATA, &user_data_dir)) {
+    NOTREACHED() << "Failed to get app data directory for Crosswalk";
+  }
+
+  base::FilePath cookie_store_path = user_data_dir.Append(
+      FILE_PATH_LITERAL("Cookies"));
+  scoped_refptr<base::SequencedTaskRunner> background_task_runner =
+      BrowserThread::GetBlockingPool()->GetSequencedTaskRunner(
+          BrowserThread::GetBlockingPool()->GetSequenceToken());
+
+  content::CookieStoreConfig cookie_config(
+      cookie_store_path,
+      content::CookieStoreConfig::RESTORED_SESSION_COOKIES,
+      NULL, NULL);
+  cookie_config.client_task_runner =
+      BrowserThread::GetMessageLoopProxyForThread(BrowserThread::IO);
+  cookie_config.background_task_runner = background_task_runner;
+  net::CookieStore* cookie_store = content::CreateCookieStore(cookie_config);
+  cookie_monster_ = cookie_store->GetCookieMonster();
+}
+
 }  // namespace
 
 static void SetAcceptCookie(JNIEnv* env, jobject obj, jboolean accept) {
@@ -352,6 +380,10 @@ static jboolean AllowFileSchemeCookies(JNIEnv* env, jobject obj) {
 static void SetAcceptFileSchemeCookies(JNIEnv* env, jobject obj,
                                        jboolean accept) {
   return CookieManager::GetInstance()->SetAcceptFileSchemeCookies(accept);
+}
+
+static void ResetCookieStore(JNIEnv* env, jobject obj) {
+  CookieManager::GetInstance()->ResetCookieStore();
 }
 
 void SetCookieMonsterOnNetworkStackInit(net::CookieMonster* cookie_monster) {

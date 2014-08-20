@@ -145,9 +145,8 @@ void XWalkBrowserMainPartsAndroid::PreMainMessageLoopRun() {
   cookie_config.client_task_runner =
       BrowserThread::GetMessageLoopProxyForThread(BrowserThread::IO);
   cookie_config.background_task_runner = background_task_runner;
-  cookie_store_ = content::CreateCookieStore(cookie_config);
-  cookie_store_->GetCookieMonster()->SetPersistSessionCookies(true);
-  SetCookieMonsterOnNetworkStackInit(cookie_store_->GetCookieMonster());
+  net::CookieStore* cookie_store = content::CreateCookieStore(cookie_config);
+  SetCookieMonsterOnNetworkStackInit(cookie_store->GetCookieMonster());
 }
 
 void XWalkBrowserMainPartsAndroid::PostMainMessageLoopRun() {

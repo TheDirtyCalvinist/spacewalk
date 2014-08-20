@@ -94,6 +94,13 @@ public final class XWalkCookieManager {
     }
 
     /**
+     * Reset the underlying persisted cookie store for the next webview.
+     */
+    public void resetCookieStore() {
+        nativeResetCookieStore();
+    }
+
+    /**
      * Sets whether cookies are accepted for file scheme URLs.
      *
      * Use of cookies with file scheme URLs is potentially insecure. Do not
@@ -122,4 +129,6 @@ public final class XWalkCookieManager {
 
     private native boolean nativeAllowFileSchemeCookies();
     private native void nativeSetAcceptFileSchemeCookies(boolean accept);
+
+    private native void nativeResetCookieStore();
 }
