@@ -282,7 +282,11 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
 
     private void unregisterReceiver() {
         if (mNotificationCloseReceiver != null) {
-            mView.getActivity().unregisterReceiver(mNotificationCloseReceiver);
+            try {
+                mView.getActivity().unregisterReceiver(mNotificationCloseReceiver);                
+            } catch (IllegalArgumentException e){
+
+            }
             mNotificationCloseReceiver = null;
         }
     }

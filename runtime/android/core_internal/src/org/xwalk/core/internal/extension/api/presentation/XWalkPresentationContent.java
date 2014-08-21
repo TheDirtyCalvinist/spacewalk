@@ -34,7 +34,7 @@ public class XWalkPresentationContent {
 
     public void load(final String url) {
         if (mContentView == null) {
-            mContentView = new XWalkViewInternal(mContext, mActivity);
+            mContentView = new XWalkViewInternal(mContext, mActivity, "");
             final XWalkUIClientInternal xWalkUIClient = new XWalkUIClientInternal(mContentView) {
                 @Override
                 public void onJavascriptCloseWindow(XWalkViewInternal view) {

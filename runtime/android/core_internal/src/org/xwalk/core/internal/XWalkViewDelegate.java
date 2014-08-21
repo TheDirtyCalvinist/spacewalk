@@ -77,7 +77,7 @@ class XWalkViewDelegate {
         }
     }
 
-    public static void init(XWalkViewInternal xwalkView) throws UnsatisfiedLinkError {
+    public static void init(XWalkViewInternal xwalkView, String userIdentifier) throws UnsatisfiedLinkError {
         if (sInitialized) {
             return;
         }
@@ -116,7 +116,7 @@ class XWalkViewDelegate {
                 System.load("/data/data/" + context.getPackageName() + "/lib/" + library);
             }
         }
-        loadLibrary(context);
+        loadLibrary(context, userIdentifier);
         DeviceUtils.addDeviceSpecificUserAgentSwitch(context);
 
         if (sRunningOnIA && !nativeIsLibraryBuiltForIA()) {
@@ -168,7 +168,11 @@ class XWalkViewDelegate {
     }
 
     private static void loadLibrary(Context context) {
-        PathUtils.setPrivateDataDirectorySuffix(PRIVATE_DATA_DIRECTORY_SUFFIX);
+        loadLibrary(context, "");
+    }
+
+    private static void loadLibrary(Context context, String directoryAddendum) {
+        PathUtils.setPrivateDataDirectorySuffix(PRIVATE_DATA_DIRECTORY_SUFFIX + directoryAddendum);
         try {
             LibraryLoader.loadNow(context, true);
         } catch (ProcessInitException e) {

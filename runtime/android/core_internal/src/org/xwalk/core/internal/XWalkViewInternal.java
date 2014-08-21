@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Looper;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
@@ -153,6 +154,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     private XWalkExtensionManager mExtensionManager;
     private boolean mIsHidden;
     private XWalkActivityStateListener mActivityStateListener;
+    private static final String TAG = XWalkViewInternal.class.getSimpleName();
 
     /**
      * Normal reload mode as default.
@@ -176,7 +178,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
 
         checkThreadSafety();
         mContext = context;
-        init(context, attrs);
+        init(context, attrs, "");
     }
 
     /**
@@ -186,14 +188,14 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param activity the activity for this XWalkViewInternal.
      * @since 1.0
      */
-    public XWalkViewInternal(Context context, Activity activity) {
+    public XWalkViewInternal(Context context, Activity activity, String userIdentifier) {
         super(context, null);
         checkThreadSafety();
 
         // Make sure mActivity is initialized before calling 'init' method.
         mActivity = activity;
         mContext = context;
-        init(context, null);
+        init(context, null, userIdentifier);
     }
 
     /**
@@ -222,14 +224,15 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         return mContext;
     }
 
-    private void init(Context context, AttributeSet attrs) {
+    private void init(Context context, AttributeSet attrs, String userIdentifier) {
         // Initialize chromium resources. Assign them the correct ids in
         // xwalk core.
         XWalkInternalResources.resetIds(context);
 
         // Intialize library, paks and others.
         try {
-            XWalkViewDelegate.init(this);
+            Log.d(TAG, "Initializing xwalkview");
+            XWalkViewDelegate.init(this, userIdentifier);
             mActivityStateListener = new XWalkActivityStateListener(this);
             ApplicationStatus.registerStateListenerForActivity(
                     mActivityStateListener, getActivity());

@@ -167,8 +167,8 @@ public class XWalkView extends XWalkViewInternal {
      * @param activity the activity for this XWalkView.
      * @since 1.0
      */
-    public XWalkView(Context context, Activity activity) {
-        super(context, activity);
+    public XWalkView(Context context, Activity activity, String userIdentifier) {
+        super(context, activity, userIdentifier);
     }
 
     /**
