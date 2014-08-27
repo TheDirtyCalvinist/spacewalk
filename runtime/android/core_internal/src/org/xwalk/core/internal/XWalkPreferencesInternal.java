@@ -82,6 +82,22 @@ public class XWalkPreferencesInternal {
     static final String SUPPORT_MULTIPLE_WINDOWS =
             "support-multiple-windows";
 
+    /**
+     * The key string to set xwalk profile name.
+     * User data will be kept separated for different profiles.
+     * Profile needs to be set before any XWalkView instance created.
+     * @since 3.0
+     */
+    @XWalkAPI
+    public static final String PROFILE_NAME =
+            "profile-name";
+
+    /**
+     * The key string to enable/disable javascript.
+     * TODO(wang16): Remove this after cordova removes its dependency.
+     */
+    static final String ENABLE_JAVASCRIPT = "enable-javascript";
+
     static {
         sPrefMap.put(REMOTE_DEBUGGING, Boolean.FALSE);
         sPrefMap.put(ANIMATABLE_XWALK_VIEW, Boolean.FALSE);
@@ -90,6 +106,7 @@ public class XWalkPreferencesInternal {
         sPrefMap.put(
                 ALLOW_UNIVERSAL_ACCESS_FROM_FILE, Boolean.FALSE);
         sPrefMap.put(SUPPORT_MULTIPLE_WINDOWS, Boolean.TRUE);
+        sPrefMap.put(PROFILE_NAME, "Default");
     }
 
     /**

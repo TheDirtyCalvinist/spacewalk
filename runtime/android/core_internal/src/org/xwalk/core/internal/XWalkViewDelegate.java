@@ -28,6 +28,7 @@ import org.chromium.content.browser.BrowserStartupController;
 import org.chromium.content.browser.DeviceUtils;
 import org.chromium.content.browser.ResourceExtractor;
 import org.chromium.content.browser.ResourceExtractor.ResourceIntercepter;
+import org.chromium.content.common.ContentSwitches;
 import org.chromium.net.NetworkChangeNotifier;
 
 @JNINamespace("xwalk")
@@ -185,6 +186,9 @@ class XWalkViewDelegate {
                 } catch (ProcessInitException e) {
                     throw new RuntimeException("Cannot initialize Crosswalk Core", e);
                 }
+                CommandLine.getInstance().appendSwitchWithValue(
+                        XWalkSwitches.PROFILE_NAME,
+                        XWalkPreferencesInternal.getStringValue(XWalkPreferencesInternal.PROFILE_NAME));
                 try {
                     BrowserStartupController.get(context).startBrowserProcessesSync(
                         BrowserStartupController.MAX_RENDERERS_SINGLE_PROCESS);
