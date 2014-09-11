@@ -733,7 +733,8 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     /**
      * @hide
      */
-    public XWalkSettings getSettings() {
+    @XWalkAPI
+    public org.xwalk.core.internal.XWalkSettings getSettings() {
         if (mContent == null) return null;
         checkThreadSafety();
         return mContent.getSettings();
@@ -923,6 +924,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         switch (newState) {
             case ActivityState.STARTED:
                 onShow();
+                if (null != mExtensionManager) mExtensionManager.onStart();
                 break;
             case ActivityState.PAUSED:
                 pauseTimers();
@@ -937,6 +939,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
                 break;
             case ActivityState.STOPPED:
                 onHide();
+                if (null != mExtensionManager) mExtensionManager.onStop();
                 break;
             default:
                 break;

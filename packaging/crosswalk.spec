@@ -16,7 +16,7 @@
 %endif
 
 Name:           crosswalk
-Version:        9.37.198.0
+Version:        9.38.201.0
 Release:        0
 Summary:        Crosswalk is an app runtime based on Chromium
 License:        (BSD-3-Clause and LGPL-2.1+)
@@ -66,6 +66,7 @@ BuildRequires:  pkgconfig(libudev)
 BuildRequires:  pkgconfig(libxml-2.0)
 BuildRequires:  pkgconfig(libxslt)
 BuildRequires:  pkgconfig(pango)
+BuildRequires:  pkgconfig(pkgmgr)
 BuildRequires:  pkgconfig(pkgmgr-info)
 BuildRequires:  pkgconfig(pkgmgr-installer)
 BuildRequires:  pkgconfig(pkgmgr-parser)
@@ -100,10 +101,10 @@ BuildRequires:  pkgconfig(scim)
 %description
 Crosswalk is an app runtime based on Chromium. It is an open source project started by the Intel Open Source Technology Center (http://www.01.org).
 
-%define _manifestdir /usr/share/packages
-%define _manifestdir_ro /opt/share/packages
-%define _desktop_icondir /usr/share/icons/default/small
-%define _desktop_icondir_ro /opt/share/icons/default/small
+%define _manifestdir %TZ_SYS_RO_PACKAGES
+%define _manifestdir_ro %TZ_SYS_RO_PACKAGE
+%define _desktop_icondir %TZ_SYS_RW_ICONS/default/small
+%define _desktop_icondir_ro %TZ_SYS_RO_ICONS/default/small
 %define _dbusservicedir /usr/share/dbus-1/services
 %define _systemduserservicedir /usr/lib/systemd/user
 
@@ -176,11 +177,6 @@ GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Ddisable_nacl=%{_disable_nacl}"
 GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Ddisable_fatal_linker_warnings=1"
 %endif
 
-# Temporarily disable WebRTC support because its build currently hardcodes
-# dependencies on X11 and OpenSSL. We are still trying to get some
-# clarifications as to whether this is really necessary. See XWALK-2160.
-GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Denable_webrtc=0"
-
 # For building for arm in OBS, we need :
 # -> to unset sysroot value.
 # sysroot variable is automatically set for cross compilation to use arm-sysroot provided by Chromium project
@@ -206,6 +202,7 @@ export GYP_GENERATORS='ninja'
 --no-parallel \
 ${GYP_EXTRA_FLAGS} \
 -Dchromeos=0 \
+-Dclang=0 \
 -Dtizen=1 \
 -Dpython_ver=2.7 \
 -Duse_aura=1 \
@@ -220,7 +217,7 @@ ${GYP_EXTRA_FLAGS} \
 -Dshared_process_mode=1 \
 -Denable_hidpi=1
 
-ninja %{?_smp_mflags} -C src/out/Release xwalk xwalkctl xwalk_launcher xwalk-pkg-helper
+ninja %{?_smp_mflags} -C src/out/Release xwalk xwalkctl xwalk_launcher xwalk-pkg-helper xwalk-backendlib
 
 %install
 # Binaries.
@@ -231,6 +228,8 @@ install -p -D src/out/Release/xwalkctl %{buildroot}%{_bindir}/xwalkctl
 install -p -D src/out/Release/xwalk-launcher %{buildroot}%{_bindir}/xwalk-launcher
 # xwalk-pkg-helper needs to be set-user-ID-root so it can finish the installation process.
 install -m 06755 -p -D src/out/Release/xwalk-pkg-helper %{buildroot}%{_bindir}/xwalk-pkg-helper
+install -p -D src/out/Release/lib/libxwalk-backendlib.so %{buildroot}%{_libdir}/xwalk/libxwalk-backendlib.so
+install -p -D src/xwalk/application/tools/tizen/xwalk_backend_wrapper.sh %{buildroot}%{_libdir}/xwalk/xwalk_backend_wrapper.sh
 
 # Supporting libraries and resources.
 install -p -D src/out/Release/icudtl.dat %{buildroot}%{_libdir}/xwalk/icudtl.dat
@@ -241,8 +240,6 @@ install -p -D src/xwalk/application/common/installer/tizen/configuration/*.xsd %
 
 # PNaCl
 %if ! %{_disable_nacl}
-install -p -D src/out/Release/libppGoogleNaClPluginChrome.so %{buildroot}%{_libdir}/xwalk/libppGoogleNaClPluginChrome.so
-install -p -D src/out/Release/nacl_bootstrap_munge_phdr %{buildroot}%{_libdir}/xwalk/nacl_bootstrap_munge_phdr
 install -p -D src/out/Release/nacl_bootstrap_raw %{buildroot}%{_libdir}/xwalk/nacl_bootstrap_raw
 install -p -D src/out/Release/nacl_helper %{buildroot}%{_libdir}/xwalk/nacl_helper
 install -p -D src/out/Release/nacl_helper_bootstrap %{buildroot}%{_libdir}/xwalk/nacl_helper_bootstrap
@@ -259,6 +256,17 @@ install -p -D %{name}.png %{buildroot}%{_desktop_icondir}/%{name}.png
 mkdir -p %{_desktop_icondir_ro}
 mkdir -p %{_manifestdir_ro}
 
+ln -sf %{_libdir}/xwalk/libxwalk-backendlib.so /etc/package-manager/backendlib/libxpk.so
+ln -sf %{_libdir}/xwalk/libxwalk-backendlib.so /etc/package-manager/backendlib/libwgt.so
+ln -sf %{_libdir}/xwalk/xwalk_backend_wrapper.sh /etc/package-manager/backend/xpk
+ln -sf %{_libdir}/xwalk/xwalk_backend_wrapper.sh /etc/package-manager/backend/wgt
+
+%preun
+[ -L /etc/package-manager/backendlib/libxpk.so ] && rm /etc/package-manager/backendlib/libxpk.so
+[ -L /etc/package-manager/backendlib/libwgt.so ] && rm /etc/package-manager/backendlib/libwgt.so
+[ -L /etc/package-manager/backend/xpk ] && rm /etc/package-manager/backend/xpk
+[ -L /etc/package-manager/backend/wgt ] && rm /etc/package-manager/backend/wgt
+
 %files
 %manifest %{name}.manifest
 %license AUTHORS.chromium LICENSE.chromium LICENSE.xwalk
@@ -268,8 +276,6 @@ mkdir -p %{_manifestdir_ro}
 %{_libdir}/xwalk/icudtl.dat
 %{_libdir}/xwalk/libffmpegsumo.so
 %if ! %{_disable_nacl}
-%{_libdir}/xwalk/libppGoogleNaClPluginChrome.so
-%{_libdir}/xwalk/nacl_bootstrap_munge_phdr
 %{_libdir}/xwalk/nacl_bootstrap_raw
 %{_libdir}/xwalk/nacl_helper
 %{_libdir}/xwalk/nacl_helper_bootstrap
@@ -278,6 +284,8 @@ mkdir -p %{_manifestdir_ro}
 %endif
 %{_libdir}/xwalk/xwalk
 %{_libdir}/xwalk/xwalk.pak
+%{_libdir}/xwalk/libxwalk-backendlib.so
+%{_libdir}/xwalk/xwalk_backend_wrapper.sh
 %{_manifestdir}/%{name}.xml
 %{_desktop_icondir}/%{name}.png
 %{_dbusservicedir}/org.crosswalkproject.Runtime1.service

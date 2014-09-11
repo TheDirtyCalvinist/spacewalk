@@ -104,6 +104,10 @@ base::FilePath RuntimeContext::GetPath() const {
   base::FilePath result;
 #if defined(OS_ANDROID)
   CHECK(PathService::Get(base::DIR_ANDROID_APP_DATA, &result));
+  CommandLine* cmd_line = CommandLine::ForCurrentProcess();
+  if (cmd_line->HasSwitch(switches::kXWalkProfileName))
+    result = result.Append(
+        cmd_line->GetSwitchValuePath(switches::kXWalkProfileName));
 #else
   CHECK(PathService::Get(xwalk::DIR_DATA_PATH, &result));
 #endif
@@ -186,6 +190,10 @@ quota::SpecialStoragePolicy* RuntimeContext::GetSpecialStoragePolicy() {
 }
 
 content::PushMessagingService* RuntimeContext::GetPushMessagingService() {
+  return NULL;
+}
+
+content::SSLHostStateDelegate* RuntimeContext::GetSSLHostStateDelegate() {
   return NULL;
 }
 

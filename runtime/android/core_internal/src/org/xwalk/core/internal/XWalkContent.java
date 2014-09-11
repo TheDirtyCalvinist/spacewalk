@@ -39,6 +39,7 @@ import org.chromium.content.browser.ContentViewStatics;
 import org.chromium.content.browser.LoadUrlParams;
 import org.chromium.content.browser.NavigationHistory;
 import org.chromium.content.common.CleanupReference;
+import org.chromium.content_public.browser.JavaScriptCallback;
 import org.chromium.media.MediaPlayerBridge;
 import org.chromium.ui.base.ActivityWindowAndroid;
 import org.chromium.ui.gfx.DeviceDisplayInfo;
@@ -140,7 +141,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mContentViewCore.setContentViewClient(mContentsClientBridge);
         mContentViewRenderView.setCurrentContentViewCore(mContentViewCore);
         // For addJavascriptInterface
-        mContentsClientBridge.installWebContentsObserver(mContentViewCore);
+        mContentsClientBridge.installWebContentsObserver(mContentViewCore.getWebContents());
 
         // Set DIP scale.
         mContentsClientBridge.setDIPScale(DeviceDisplayInfo.create(context).getDIPScale());
@@ -224,9 +225,9 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
 
     public void evaluateJavascript(String script, ValueCallback<String> callback) {
         final ValueCallback<String>  fCallback = callback;
-        ContentViewCore.JavaScriptCallback coreCallback = null;
+        JavaScriptCallback coreCallback = null;
         if (fCallback != null) {
-            coreCallback = new ContentViewCore.JavaScriptCallback() {
+            coreCallback = new JavaScriptCallback() {
                 @Override
                 public void handleJavaScriptResult(String jsonResult) {
                     fCallback.onReceiveValue(jsonResult);
@@ -365,7 +366,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
 
     // For instrumentation test.
     public void installWebContentsObserverForTest(XWalkContentsClient contentClient) {
-        contentClient.installWebContentsObserver(mContentViewCore);
+        contentClient.installWebContentsObserver(mContentViewCore.getWebContents());
     }
 
     public String devToolsAgentId() {
@@ -649,19 +650,27 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     }
 
     @Override
-    public void onKeyValueChanged(String key, boolean value) {
+    public void onKeyValueChanged(String key, XWalkPreferencesInternal.PreferenceValue value) {
         if (key == null) return;
         if (key.equals(XWalkPreferencesInternal.REMOTE_DEBUGGING)) {
-            if (value) enableRemoteDebugging();
+            if (value.getBooleanValue()) enableRemoteDebugging();
             else disableRemoteDebugging();
         } else if (key.equals(XWalkPreferencesInternal.ENABLE_JAVASCRIPT)) {
-            if (mSettings != null) mSettings.setJavaScriptEnabled(value);
+            if (mSettings != null) {
+                mSettings.setJavaScriptEnabled(value.getBooleanValue());
+            }
         } else if (key.equals(XWalkPreferencesInternal.JAVASCRIPT_CAN_OPEN_WINDOW)) {
-            if (mSettings != null) mSettings.setJavaScriptCanOpenWindowsAutomatically(value);
+            if (mSettings != null) {
+                mSettings.setJavaScriptCanOpenWindowsAutomatically(value.getBooleanValue());
+            }
         } else if (key.equals(XWalkPreferencesInternal.ALLOW_UNIVERSAL_ACCESS_FROM_FILE)) {
-            if (mSettings != null) mSettings.setAllowUniversalAccessFromFileURLs(value);
+            if (mSettings != null) {
+                mSettings.setAllowUniversalAccessFromFileURLs(value.getBooleanValue());
+            }
         } else if (key.equals(XWalkPreferencesInternal.SUPPORT_MULTIPLE_WINDOWS)) {
-            if (mSettings != null) mSettings.setSupportMultipleWindows(value);
+            if (mSettings != null) {
+                mSettings.setSupportMultipleWindows(value.getBooleanValue());
+            }
         }
     }
 
