@@ -193,6 +193,10 @@ content::PushMessagingService* RuntimeContext::GetPushMessagingService() {
   return NULL;
 }
 
+content::SSLHostStateDelegate* RuntimeContext::GetSSLHostStateDelegate() {
+  return NULL;
+}
+
 net::URLRequestContextGetter* RuntimeContext::CreateRequestContext(
     content::ProtocolHandlerMap* protocol_handlers,
     content::URLRequestInterceptorScopedVector request_interceptors) {

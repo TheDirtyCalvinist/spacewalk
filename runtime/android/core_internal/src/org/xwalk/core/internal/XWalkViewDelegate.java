@@ -118,7 +118,6 @@ class XWalkViewDelegate {
             }
         }
         loadLibrary(context);
-        DeviceUtils.addDeviceSpecificUserAgentSwitch(context);
 
         if (sRunningOnIA && !nativeIsLibraryBuiltForIA()) {
             throw new UnsatisfiedLinkError();
@@ -186,12 +185,13 @@ class XWalkViewDelegate {
                 } catch (ProcessInitException e) {
                     throw new RuntimeException("Cannot initialize Crosswalk Core", e);
                 }
+                DeviceUtils.addDeviceSpecificUserAgentSwitch(context);
                 CommandLine.getInstance().appendSwitchWithValue(
                         XWalkSwitches.PROFILE_NAME,
                         XWalkPreferencesInternal.getStringValue(XWalkPreferencesInternal.PROFILE_NAME));
                 try {
                     BrowserStartupController.get(context).startBrowserProcessesSync(
-                        BrowserStartupController.MAX_RENDERERS_SINGLE_PROCESS);
+                        true);
                 } catch (ProcessInitException e) {
                     throw new RuntimeException("Cannot initialize Crosswalk Core", e);
                 }

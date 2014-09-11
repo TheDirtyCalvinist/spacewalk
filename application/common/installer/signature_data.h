@@ -12,7 +12,6 @@
 #include "base/files/file_path.h"
 #include "libxml/tree.h"
 #include "libxml/xpath.h"
-#include "xwalk/application/common/signature_types.h"
 
 namespace xwalk {
 namespace application {
@@ -26,7 +25,7 @@ class SignatureData {
     return signature_file_name_;
   }
 
-  std::set<std::string>& reference_set() {
+  const std::set<std::string>& reference_set() const {
     return reference_set_;
   }
 
@@ -82,7 +81,7 @@ class SignatureData {
     signature_method_ = signature_method;
   }
 
-  std::list<std::string>& certificate_list() {
+  const std::list<std::string>& certificate_list() const {
     return certificate_list_;
   }
 
@@ -90,17 +89,11 @@ class SignatureData {
     certificate_list_ = certificate_list;
   }
 
-  ReferenceHashMap& reference_hash_map() {
-    return reference_hash_map_;
-  }
-
-  void set_reference_hash_map(const ReferenceHashMap& reference_hash_map) {
-    reference_hash_map_ = reference_hash_map;
-  }
-
   bool isAuthorSignature() const {
     return signature_number_ == -1;
   }
+
+  base::FilePath GetExtractedWidgetPath() const;
 
  private:
   std::string signature_file_name_;
@@ -117,7 +110,6 @@ class SignatureData {
   std::string signature_method_;
   std::set<std::string> reference_set_;
   std::list<std::string> certificate_list_;
-  ReferenceHashMap reference_hash_map_;
 
   DISALLOW_COPY_AND_ASSIGN(SignatureData);
 };

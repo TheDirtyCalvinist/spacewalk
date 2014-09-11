@@ -22,8 +22,8 @@ import android.webkit.ValueCallback;
 import android.webkit.WebResourceResponse;
 
 import org.chromium.content.browser.ContentViewClient;
-import org.chromium.content.browser.ContentViewCore;
 import org.chromium.content.browser.WebContentsObserverAndroid;
+import org.chromium.content_public.browser.WebContents;
 import org.chromium.net.NetError;
 
 /**
@@ -46,8 +46,8 @@ abstract class XWalkContentsClient extends ContentViewClient {
     private double mDIPScale;
 
     public class XWalkWebContentsObserver extends WebContentsObserverAndroid {
-        public XWalkWebContentsObserver(ContentViewCore contentViewCore) {
-            super(contentViewCore);
+        public XWalkWebContentsObserver(WebContents webContents) {
+            super(webContents);
         }
 
         @Override
@@ -98,19 +98,15 @@ abstract class XWalkContentsClient extends ContentViewClient {
         return super.shouldOverrideKeyEvent(event);
     }
 
-    void installWebContentsObserver(ContentViewCore contentViewCore) {
+    void installWebContentsObserver(WebContents webContents) {
         if (mWebContentsObserver != null) {
             mWebContentsObserver.detachFromWebContents();
         }
-        mWebContentsObserver = new XWalkWebContentsObserver(contentViewCore);
+        mWebContentsObserver = new XWalkWebContentsObserver(webContents);
     }
 
     void setDIPScale(double dipScale) {
         mDIPScale = dipScale;
-    }
-
-    public double getDIPScale() {
-        return mDIPScale;
     }
 
     final XWalkContentsClientCallbackHelper getCallbackHelper() {
@@ -158,8 +154,8 @@ abstract class XWalkContentsClient extends ContentViewClient {
 
     public abstract void onGeolocationPermissionsHidePrompt();
 
-    public final void onScaleChanged(float oldScale, float newScale) {
-        onScaleChangedScaled((float)(oldScale * mDIPScale), (float)(newScale * mDIPScale));
+    public final void onScaleChanged(float oldScaleFactor, float newScaleFactor) {
+        onScaleChangedScaled((float)(oldScaleFactor * mDIPScale), (float)(newScaleFactor * mDIPScale));
     }
 
     public abstract void onScaleChangedScaled(float oldScale, float newScale);

@@ -32,7 +32,6 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
     private static final String XWALK_ACTION_CLICK_NOTIFICATION_SUFFIX = ".notification.click";
     private static final String XWALK_ACTION_CLOSE_NOTIFICATION_SUFFIX = ".notification.close";
     private static final String XWALK_INTENT_EXTRA_KEY_NOTIFICATION_ID = "xwalk.NOTIFICATION_ID";
-    private static final String XWALK_INTENT_EXTRA_KEY_DELEGATE = "xwalk.DELEGATE";
     private static final String XWALK_INTENT_CATEGORY_NOTIFICATION_PREFIX = "notification_";
 
     private class WebNotification {
@@ -84,7 +83,9 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
 
     @Override
     public void shutdown() {
-        unregisterReceiver();
+        if (!mExistNotificationIds.isEmpty()) {
+            unregisterReceiver();
+        }
         mBridge = null;
     }
 
@@ -92,15 +93,14 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
     public boolean maybeHandleIntent(Intent intent) {
         if (intent.getAction() == null) return false;
         int notificationId = intent.getIntExtra(XWALK_INTENT_EXTRA_KEY_NOTIFICATION_ID, -1);
-        long delegate = intent.getLongExtra(XWALK_INTENT_EXTRA_KEY_DELEGATE, -1);
         if (notificationId <= 0) return false;
         if (intent.getAction().equals(
                 mView.getActivity().getPackageName() + XWALK_ACTION_CLOSE_NOTIFICATION_SUFFIX)) {
-            onNotificationClose(notificationId, true, delegate);
+            onNotificationClose(notificationId, true);
             return true;
         } else if (intent.getAction().equals(
                 mView.getActivity().getPackageName() + XWALK_ACTION_CLICK_NOTIFICATION_SUFFIX)) {
-            onNotificationClick(notificationId, delegate);
+            onNotificationClick(notificationId);
             return true;
         }
         return false;
@@ -143,7 +143,7 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
     @Override
     @SuppressWarnings("deprecation")
     public void showNotification(String title, String message, String replaceId,
-            int notificationId, long delegate) {
+            int notificationId) {
         Notification.Builder builder;
 
         if (!replaceId.isEmpty() && mExistReplaceIds.containsKey(replaceId)) {
@@ -181,13 +181,11 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
         Intent clickIntent = new Intent(activity, activity.getClass())
                 .setAction(activity.getPackageName() + XWALK_ACTION_CLICK_NOTIFICATION_SUFFIX)
                 .putExtra(XWALK_INTENT_EXTRA_KEY_NOTIFICATION_ID, notificationId)
-                .putExtra(XWALK_INTENT_EXTRA_KEY_DELEGATE, delegate)
                 .setFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .addCategory(category);
 
         Intent closeIntent = new Intent(activity.getPackageName() + XWALK_ACTION_CLOSE_NOTIFICATION_SUFFIX)
                 .putExtra(XWALK_INTENT_EXTRA_KEY_NOTIFICATION_ID, notificationId)
-                .putExtra(XWALK_INTENT_EXTRA_KEY_DELEGATE, delegate)
                 .addCategory(category);
 
         builder.setContentIntent(PendingIntent.getActivity(
@@ -198,31 +196,31 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
         doShowNotification(notificationId, 
                 VERSION.SDK_INT >= VERSION_CODES.JELLY_BEAN ? builder.build() : builder.getNotification());
         notificationChanged();
-        onNotificationShown(notificationId, delegate);
+        onNotificationShown(notificationId);
     }
 
     @Override
-    public void cancelNotification(int notificationId, long delegate) {
+    public void cancelNotification(int notificationId) {
         mNotificationManager.cancel(notificationId);
-        onNotificationClose(notificationId, false, delegate);
+        onNotificationClose(notificationId, false);
     }
 
     public void doShowNotification(int notificationId, Notification notification) {
         mNotificationManager.notify(notificationId, notification);
     }
 
-    public void onNotificationShown(int notificationId, long delegate) {
+    public void onNotificationShown(int notificationId) {
         WebNotification webNotification = mExistNotificationIds.get(notificationId);
         if (webNotification == null) {
             return;
         }
 
         if (mBridge != null) {
-            mBridge.notificationDisplayed(delegate);
+            mBridge.notificationDisplayed(notificationId);
         }
     }
 
-    public void onNotificationClick(int notificationId, long delegate) {
+    public void onNotificationClick(int notificationId) {
         WebNotification webNotification = mExistNotificationIds.get(notificationId);
         if (webNotification == null) {
             return;
@@ -233,12 +231,12 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
 
         notificationChanged();
         if (mBridge != null) {
-            mBridge.notificationClicked(notificationId, delegate);
+            mBridge.notificationClicked(notificationId);
         }
     }
 
     public void onNotificationClose(
-            int notificationId, boolean byUser, long delegate) {
+            int notificationId, boolean byUser) {
         WebNotification webNotification = mExistNotificationIds.get(notificationId);
         if (webNotification == null) {
             return;
@@ -249,7 +247,7 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
 
         notificationChanged();
         if (mBridge != null) {
-            mBridge.notificationClosed(notificationId, byUser, delegate);
+            mBridge.notificationClosed(notificationId, byUser);
         }
     }
 
@@ -257,6 +255,7 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
         if (mExistNotificationIds.isEmpty()) {
             Log.i(TAG, "notifications are all cleared," +
                     "unregister broadcast receiver for close pending intent");
+            unregisterReceiver();
         } else {
             registerReceiver();
         }
@@ -275,15 +274,11 @@ public class XWalkNotificationServiceImpl implements XWalkNotificationService {
         } catch (AndroidRuntimeException e) {
             //FIXME(wang16): The exception will happen when there are multiple xwalkviews in one activity.
             //               Remove it after notification service supports multi-views.
-            mNotificationCloseReceiver = null;
             Log.w(TAG, e.getLocalizedMessage());
         }
     }
 
     private void unregisterReceiver() {
-        if (mNotificationCloseReceiver != null) {
-            mView.getActivity().unregisterReceiver(mNotificationCloseReceiver);
-            mNotificationCloseReceiver = null;
-        }
+        mView.getActivity().unregisterReceiver(mNotificationCloseReceiver);
     }
 }

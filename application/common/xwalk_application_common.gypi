@@ -12,6 +12,7 @@
         '../../../sql/sql.gyp:sql',
         '../../../url/url.gyp:url_lib',
         '../../../third_party/libxml/libxml.gyp:libxml',
+        '../../../third_party/re2/re2.gyp:re2',
         '../../../third_party/zlib/google/zip.gyp:zip',
       ],
       'sources': [
@@ -32,7 +33,6 @@
         'constants.h',
         'id_util.cc',
         'id_util.h',
-        'install_warning.h',
         'manifest.cc',
         'manifest.h',
         'manifest_handler.cc',
@@ -87,6 +87,10 @@
             'installer/package_installer_tizen.h',
             'installer/tizen/packageinfo_constants.cc',
             'installer/tizen/packageinfo_constants.h',
+            'installer/tizen/signature_validator.cc',
+            'installer/tizen/signature_validator.h',
+            'tizen/package_path.cc',
+            'tizen/package_path.h',
           ],
         }, {
         'sources': [

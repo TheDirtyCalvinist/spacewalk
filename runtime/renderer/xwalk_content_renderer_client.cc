@@ -47,6 +47,10 @@
 #include "xwalk/runtime/renderer/tizen/xwalk_render_view_ext_tizen.h"
 #endif
 
+#if !defined(DISABLE_NACL)
+#include "components/nacl/renderer/nacl_helper.h"
+#endif
+
 namespace xwalk {
 
 namespace {
@@ -139,6 +143,10 @@ void XWalkContentRendererClient::RenderFrameCreated(
 #if defined(ENABLE_PLUGINS)
   new PepperHelper(render_frame);
 #endif
+
+#if !defined(DISABLE_NACL)
+  new nacl::NaClHelper(render_frame);
+#endif
 }
 
 void XWalkContentRendererClient::RenderViewCreated(
@@ -155,10 +163,6 @@ void XWalkContentRendererClient::DidCreateScriptContext(
     int extension_group, int world_id) {
   if (extension_controller_)
     extension_controller_->DidCreateScriptContext(frame, context);
-#if !defined(OS_ANDROID)
-  xwalk_render_process_observer_->DidCreateScriptContext(
-      frame, context, extension_group, world_id);
-#endif
 }
 
 void XWalkContentRendererClient::DidCreateModuleSystem(
@@ -243,7 +247,7 @@ bool XWalkContentRendererClient::WillSendRequest(blink::WebFrame* frame,
 #endif
   // if under WARP mode.
   if (url.GetOrigin() == app_url.GetOrigin() ||
-      frame->document().securityOrigin().canRequest(url)) {
+      blink::WebSecurityOrigin::create(app_url).canRequest(url)) {
     LOG(INFO) << "[PASS] " << origin_url.spec() << " request " << url.spec();
     return false;
   }

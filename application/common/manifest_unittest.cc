@@ -13,7 +13,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "xwalk/application/common/application_manifest_constants.h"
-#include "xwalk/application/common/install_warning.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace errors = xwalk::application_manifest_errors;
@@ -46,8 +45,7 @@ class ManifestTest : public testing::Test {
       manifest_value->Set(key, value);
     else
       manifest_value->Remove(key, NULL);
-    manifest->reset(new Manifest(Manifest::COMMAND_LINE,
-            manifest_value.Pass()));
+    manifest->reset(new Manifest(manifest_value.Pass()));
   }
 
   std::string default_value_;
@@ -61,13 +59,11 @@ TEST_F(ManifestTest, ApplicationData) {
   manifest_value->SetString("unknown_key", "foo");
 
   scoped_ptr<Manifest> manifest(
-      new Manifest(Manifest::COMMAND_LINE, manifest_value.Pass()));
+      new Manifest(manifest_value.Pass()));
   std::string error;
-  std::vector<InstallWarning> warnings;
-  EXPECT_TRUE(manifest->ValidateManifest(&error, &warnings));
+  EXPECT_TRUE(manifest->ValidateManifest(&error));
   EXPECT_TRUE(error.empty());
   // TODO(xiang): warnings will not be empty after enable manifest features
-  ASSERT_EQ(0u, warnings.size());
   // AssertType(manifest.get(), Manifest::TYPE_HOSTED_AP);
 
   // The unknown key 'unknown_key' should be accesible.
@@ -91,12 +87,10 @@ TEST_F(ManifestTest, ApplicationTypes) {
   value->SetString(keys::kXWalkVersionKey, "1");
 
   scoped_ptr<Manifest> manifest(
-      new Manifest(Manifest::COMMAND_LINE, value.Pass()));
+      new Manifest(value.Pass()));
   std::string error;
-  std::vector<InstallWarning> warnings;
-  EXPECT_TRUE(manifest->ValidateManifest(&error, &warnings));
+  EXPECT_TRUE(manifest->ValidateManifest(&error));
   EXPECT_TRUE(error.empty());
-  EXPECT_TRUE(warnings.empty());
 
   // Platform app.
   MutateManifest(
