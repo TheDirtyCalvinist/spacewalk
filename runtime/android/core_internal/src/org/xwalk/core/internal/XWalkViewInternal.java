@@ -743,11 +743,26 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     /**
      * @hide
      */
-    @XWalkAPI
     public org.xwalk.core.internal.XWalkSettings getSettings() {
         if (mContent == null) return null;
         checkThreadSafety();
         return mContent.getSettings();
+    }
+
+    @XWalkAPI
+    public String getUserAgent(){
+        if(getSettings() != null){
+            return getSettings().getUserAgentString();
+        } else {
+            return null;
+        }
+    }
+
+    @XWalkAPI
+    public void setUserAgent(String userAgent){
+        if(getSettings() != null){
+            getSettings().setUserAgentString(userAgent);
+        }
     }
 
     /**
