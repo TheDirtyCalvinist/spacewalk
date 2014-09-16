@@ -5,6 +5,7 @@
 # found in the LICENSE file.
 # pylint: disable=F0401
 
+import json
 import optparse
 import os
 import re
@@ -12,24 +13,21 @@ import shutil
 import subprocess
 import sys
 
+# get xwalk absolute path so we can run this script from any location
+xwalk_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(xwalk_dir)
+
 from app_info import AppInfo
 from customize import VerifyPackageName, CustomizeAll, \
                       ParseParameterForCompressor
+from extension_manager import GetExtensionList, GetExtensionStatus
 from handle_permissions import permission_mapping_table
+from util import AllArchitectures, CleanDir, GetVersion, RunCommand
 from manifest_json_parser import HandlePermissionList
 from manifest_json_parser import ManifestJsonParser
 
 
 NATIVE_LIBRARY = 'libxwalkcore.so'
-
-
-def CleanDir(path):
-  if os.path.exists(path):
-    shutil.rmtree(path)
-
-
-def AllArchitectures():
-  return ("x86", "arm")
 
 
 def ConvertArchNameToArchFolder(arch):
@@ -48,22 +46,6 @@ def AddExeExtensions(name):
   for e in exts:
     result.append(name + e)
   return result
-
-
-def RunCommand(command, verbose=False, shell=False):
-  """Runs the command list, print the output, and propagate its result."""
-  proc = subprocess.Popen(command, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, shell=shell)
-  if not shell:
-    output = proc.communicate()[0]
-    result = proc.returncode
-    if verbose:
-      print(output.decode("utf-8").strip())
-    if result != 0:
-      print ('Command "%s" exited with non-zero exit code %d'
-             % (' '.join(command), result))
-      sys.exit(result)
-    return output.decode("utf-8")
 
 
 def Which(name):
@@ -87,17 +69,6 @@ def GetAndroidApiLevel():
   targets = [int(i) for i in target_regex.findall(target_output)]
   targets.extend([-1])
   return max(targets)
-
-
-def GetVersion(path):
-  """Get the version of this python tool."""
-  version_str = 'Crosswalk app packaging tool version is '
-  file_handle = open(path, 'r')
-  src_content = file_handle.read()
-  version_nums = re.findall(r'\d+', src_content)
-  version_str += ('.').join(version_nums)
-  file_handle.close()
-  return version_str
 
 
 def ContainsNativeLibrary(path):
@@ -136,7 +107,7 @@ def ParseManifest(options):
 
 
 def ParseXPK(options, out_dir):
-  cmd = ['python', 'parse_xpk.py',
+  cmd = ['python', os.path.join (xwalk_dir, 'parse_xpk.py'),
          '--file=%s' % os.path.expanduser(options.xpk),
          '--out=%s' % out_dir]
   RunCommand(cmd)
@@ -194,6 +165,33 @@ def MakeVersionCode(options):
   return '%s%s' % (abi, b.zfill(7))
 
 
+def GetExtensionBinaryPathList():
+  local_extension_list = []
+  extensions_path = os.path.join(os.getcwd(), "extensions")
+  exist_extension_list = GetExtensionList(extensions_path)
+  for item in exist_extension_list:
+    build_json_path = os.path.join(extensions_path, item, "build.json")
+    with open(build_json_path) as fd:
+      data = json.load(fd)
+    if not GetExtensionStatus(item, extensions_path):
+      continue
+    else:
+      if data.get("binary_path", False):
+        extension_binary_path = os.path.join(extensions_path,
+                                             item,
+                                             data["binary_path"])
+      else:
+        print "The extension \"%s\" doesn't exists." % item
+        sys.exit(1)
+    if os.path.isdir(extension_binary_path):
+      local_extension_list.append(extension_binary_path)
+    else:
+      print "The extension \"%s\" doesn't exists." % item
+      sys.exit(1)
+
+  return local_extension_list
+
+
 def Customize(options, app_info, manifest):
   app_info.package = options.package
   app_info.app_name = options.name
@@ -213,6 +211,21 @@ def Customize(options, app_info, manifest):
     app_info.orientation = options.orientation
   if options.icon:
     app_info.icon = '%s' % os.path.expanduser(options.icon)
+
+  #Add local extensions to extension list.
+  extension_binary_path_list = GetExtensionBinaryPathList()
+  if len(extension_binary_path_list) > 0:
+    if options.extensions is None:
+      options.extensions = "" 
+    else:
+      options.extensions += os.pathsep
+
+    for item in extension_binary_path_list:
+      options.extensions += item
+      options.extensions += os.pathsep
+    #trim final path separator
+    options.extensions = options.extensions[0:-1]
+
   CustomizeAll(app_info, options.description, options.icon_dict,
                options.permissions, options.app_url, options.app_local_path,
                options.keep_screen_on, options.extensions, manifest,
@@ -250,7 +263,7 @@ def Execution(options, name):
   else:
     print ('Use xwalk\'s keystore by default for debugging. '
            'Please switch to your keystore when distributing it to app market.')
-    key_store = 'xwalk-debug.keystore'
+    key_store = os.path.join(xwalk_dir, 'xwalk-debug.keystore')
     key_alias = 'xwalkdebugkey'
     key_code = 'xwalkdebug'
     key_alias_code = 'xwalkdebug'
@@ -265,26 +278,27 @@ def Execution(options, name):
 
   # Update android project for app and xwalk_core_library.
   update_project_cmd = ['android', 'update', 'project',
-                        '--path', name, '--target', target_string,
+                        '--path', os.path.join (xwalk_dir, name),
+                        '--target', target_string,
                         '--name', name]
   if options.mode == 'embedded':
     RunCommand(['android', 'update', 'lib-project',
-                '--path', os.path.join(name, 'xwalk_core_library'),
+                '--path', os.path.join(xwalk_dir, name, 'xwalk_core_library'),
                 '--target', target_string])
     update_project_cmd.extend(['-l', 'xwalk_core_library'])
   else:
     # Shared mode doesn't need xwalk_runtime_java.jar.
-    os.remove(os.path.join(name, 'libs', 'xwalk_runtime_java.jar'))
+    os.remove(os.path.join(xwalk_dir, name, 'libs', 'xwalk_runtime_java.jar'))
 
   RunCommand(update_project_cmd)
 
   # Check whether external extensions are included.
   extensions_string = 'xwalk-extensions'
-  extensions_dir = os.path.join(os.getcwd(), name, extensions_string)
+  extensions_dir = os.path.join(xwalk_dir, name, extensions_string)
   external_extension_jars = FindExtensionJars(extensions_dir)
   for external_extension_jar in external_extension_jars:
     shutil.copyfile(external_extension_jar,
-                    os.path.join(name, 'libs',
+                    os.path.join(xwalk_dir, name, 'libs',
                                  os.path.basename(external_extension_jar)))
 
   if options.mode == 'embedded':
@@ -296,12 +310,13 @@ def Execution(options, name):
     if not arch:
       print ('Invalid CPU arch: %s.' % arch)
       sys.exit(10)
-    library_lib_path = os.path.join(name, 'xwalk_core_library', 'libs')
+    library_lib_path = os.path.join(xwalk_dir, name, 'xwalk_core_library',
+                                    'libs')
     for dir_name in os.listdir(library_lib_path):
       lib_dir = os.path.join(library_lib_path, dir_name)
       if ContainsNativeLibrary(lib_dir):
         shutil.rmtree(lib_dir)
-    native_lib_path = os.path.join(name, 'native_libs', arch)
+    native_lib_path = os.path.join(xwalk_dir, name, 'native_libs', arch)
     if ContainsNativeLibrary(native_lib_path):
       shutil.copytree(native_lib_path, os.path.join(library_lib_path, arch))
     else:
@@ -309,7 +324,7 @@ def Execution(options, name):
             'embedded APK.' % arch)
       sys.exit(10)
 
-  ant_cmd = ['ant', 'release', '-f', os.path.join(name, 'build.xml')]
+  ant_cmd = ['ant', 'release', '-f', os.path.join(xwalk_dir, name, 'build.xml')]
   if not options.verbose:
     ant_cmd.extend(['-quiet'])
   ant_cmd.extend(['-Dkey.store="%s"' % os.path.abspath(key_store)])
@@ -324,7 +339,7 @@ def Execution(options, name):
           % (' '.join(ant_cmd), ant_result))
     sys.exit(ant_result)
 
-  src_file = os.path.join(name, 'bin', '%s-release.apk' % name)
+  src_file = os.path.join(xwalk_dir, name, 'bin', '%s-release.apk' % name)
   package_name = name
   if options.app_version:
     package_name += ('_' + options.app_version)
@@ -384,10 +399,11 @@ def MakeApk(options, app_info, manifest):
     # out.
     # When making apk for specified CPU arch, will only include the
     # corresponding native library by copying it back into xwalk_core_library.
-    target_library_path = os.path.join(name, 'xwalk_core_library')
-    shutil.copytree('xwalk_core_library', target_library_path)
+    target_library_path = os.path.join(xwalk_dir, name, 'xwalk_core_library')
+    shutil.copytree(os.path.join(xwalk_dir, 'xwalk_core_library'),
+                    target_library_path)
     library_lib_path = os.path.join(target_library_path, 'libs')
-    native_lib_path = os.path.join(name, 'native_libs')
+    native_lib_path = os.path.join(xwalk_dir, name, 'native_libs')
     os.makedirs(native_lib_path)
     available_archs = []
     for dir_name in os.listdir(library_lib_path):
@@ -558,7 +574,7 @@ def main(argv):
   xpk_temp_dir = ''
   if options.xpk:
     xpk_name = os.path.splitext(os.path.basename(options.xpk))[0]
-    xpk_temp_dir = xpk_name + '_xpk'
+    xpk_temp_dir = os.path.join(xwalk_dir, xpk_name + '_xpk')
     ParseXPK(options, xpk_temp_dir)
 
   if options.app_root and not options.manifest:

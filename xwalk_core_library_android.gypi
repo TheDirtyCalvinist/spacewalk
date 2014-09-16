@@ -16,14 +16,14 @@
       'variables': {
         'api_files': [
           '<(DEPTH)/xwalk/runtime/android/core/src/org/xwalk/core/JavascriptInterface.java',
-          '>(reflection_gen_dir)/wrapper/XWalkExtension.java',
-          '>(reflection_gen_dir)/wrapper/XWalkJavascriptResult.java',
-          '>(reflection_gen_dir)/wrapper/XWalkNavigationHistory.java',
-          '>(reflection_gen_dir)/wrapper/XWalkNavigationItem.java',
-          '>(reflection_gen_dir)/wrapper/XWalkPreferences.java',
-          '>(reflection_gen_dir)/wrapper/XWalkResourceClient.java',
-          '>(reflection_gen_dir)/wrapper/XWalkUIClient.java',
-          '>(reflection_gen_dir)/wrapper/XWalkView.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkExtension.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkJavascriptResult.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkNavigationHistory.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkNavigationItem.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkPreferences.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkResourceClient.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkUIClient.java',
+          '>(reflection_gen_dir)/wrapper/org/xwalk/core/XWalkView.java',
         ],
         'docs': '<(PRODUCT_DIR)/xwalk_core_library_docs',
       },
@@ -77,6 +77,7 @@
       'type': 'none',
       'dependencies': [
         'libxwalkcore',
+        'xwalk_core_internal_java',
         'xwalk_core_java',
       ],
       'variables': {
@@ -101,6 +102,7 @@
       'target_name': 'xwalk_core_library_java',
       'type': 'none',
       'dependencies': [
+        'xwalk_core_internal_java',
         'xwalk_core_java',
         'xwalk_core_library_empty_embedder_apk',
       ],
@@ -173,7 +175,6 @@
           ],
           'action': [
             'python', '<(DEPTH)/xwalk/build/android/generate_xwalk_core_library_aar.py',
-            '-s',  '<(DEPTH)',
             '-t', '<(PRODUCT_DIR)',
           ],
         },

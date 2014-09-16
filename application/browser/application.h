@@ -58,24 +58,7 @@ class Application : public Runtime::Observer,
     virtual ~Observer() {}
   };
 
-  // Manifest keys that can be used as application entry points.
-  enum LaunchEntryPoint {
-    StartURLKey = 1 << 0,  // start_url
-    LaunchLocalPathKey = 1 << 1,  // app.launch.local_path
-    URLKey = 1 << 2,  // url
-    Default = StartURLKey | LaunchLocalPathKey
-  };
-  typedef unsigned LaunchEntryPoints;
-
   struct LaunchParams {
-    LaunchParams() :
-        entry_points(Default),
-        launcher_pid(0),
-        force_fullscreen(false),
-        remote_debugging(false) {}
-
-    LaunchEntryPoints entry_points;
-
     // Used only when running as service. Specifies the PID of the launcher
     // process.
     int32 launcher_pid;
@@ -126,12 +109,10 @@ class Application : public Runtime::Observer,
                      StoredPermission perm);
   bool CanRequestURL(const GURL& url) const;
 
+  void set_observer(Observer* observer) { observer_ = observer; }
+
  protected:
-  // We enforce ApplicationService ownership.
-  friend class ApplicationService;
-  Application(scoped_refptr<ApplicationData> data,
-              RuntimeContext* context,
-              Observer* observer);
+  Application(scoped_refptr<ApplicationData> data, RuntimeContext* context);
   virtual bool Launch(const LaunchParams& launch_params);
   virtual void InitSecurityPolicy();
 
@@ -151,6 +132,10 @@ class Application : public Runtime::Observer,
   }
 
  private:
+  // We enforce ApplicationService ownership.
+  friend class ApplicationService;
+  static scoped_ptr<Application> Create(scoped_refptr<ApplicationData> data,
+      RuntimeContext* context);
   // Runtime::Observer implementation.
   virtual void OnRuntimeAdded(Runtime* runtime) OVERRIDE;
   virtual void OnRuntimeRemoved(Runtime* runtime) OVERRIDE;
@@ -165,9 +150,10 @@ class Application : public Runtime::Observer,
 
   // Try to extract the URL from different possible keys for entry points in the
   // manifest, returns it and the entry point used.
-  GURL GetStartURL(const LaunchParams& params, LaunchEntryPoint* used);
-  ui::WindowShowState GetWindowShowStateWGT(const LaunchParams& params);
-  ui::WindowShowState GetWindowShowStateXPK(const LaunchParams& params);
+  template <Package::Type> GURL GetStartURL();
+
+  template <Package::Type>
+  ui::WindowShowState GetWindowShowState(const LaunchParams& params);
 
   GURL GetAbsoluteURLFromKey(const std::string& key);
 
@@ -175,8 +161,7 @@ class Application : public Runtime::Observer,
 
   RuntimeContext* runtime_context_;
   Observer* observer_;
-  // The entry point used as part of Launch().
-  LaunchEntryPoint entry_point_used_;
+
   std::map<std::string, std::string> name_perm_map_;
   // Application's session permissions.
   StoredPermissionMap permission_map_;

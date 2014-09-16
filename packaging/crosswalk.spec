@@ -16,9 +16,9 @@
 %endif
 
 Name:           crosswalk
-Version:        9.38.201.0
+Version:        9.38.204.0
 Release:        0
-Summary:        Crosswalk is an app runtime based on Chromium
+Summary:        Chromium-based app runtime
 License:        (BSD-3-Clause and LGPL-2.1+)
 Group:          Web Framework/Web Run Time
 Url:            https://github.com/otcshare/crosswalk
@@ -87,6 +87,11 @@ BuildRequires:  pkgconfig(xrender)
 BuildRequires:  pkgconfig(xscrnsaver)
 BuildRequires:  pkgconfig(xt)
 BuildRequires:  pkgconfig(xtst)
+%endif
+
+%if "%{profile}" == "ivi"
+BuildRequires:  pkgconfig(murphy-common)
+BuildRequires:  pkgconfig(murphy-resource)
 %endif
 
 %if %{with wayland}
@@ -167,7 +172,7 @@ if [ -n "${BUILDDIR_NAME}" ]; then
 fi
 
 %if %{with wayland}
-GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Duse_ozone=1 -Denable_ozone_wayland_vkb=1 -Denable_xdg_shell=0"
+GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Duse_ozone=1 -Denable_ozone_wayland_vkb=1 -Denable_xdg_shell=1"
 %endif
 
 GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Ddisable_nacl=%{_disable_nacl}"
@@ -193,6 +198,10 @@ GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Dsysroot= -Dlinux_use_gold_binary=0"
 export CFLAGS=`echo $CFLAGS | sed s,-mfpu=vfpv3,-mfpu=neon,g`
 export CXXFLAGS=`echo $CXXFLAGS | sed s,-mfpu=vfpv3,-mfpu=neon,g`
 export FFLAGS=`echo $FFLAGS | sed s,-mfpu=vfpv3,-mfpu=neon,g`
+%endif
+
+%if "%{profile}" == "ivi"
+GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Denable_murphy=1"
 %endif
 
 # --no-parallel is added because chroot does not mount a /dev/shm, this will
@@ -236,7 +245,7 @@ install -p -D src/out/Release/icudtl.dat %{buildroot}%{_libdir}/xwalk/icudtl.dat
 install -p -D src/out/Release/libffmpegsumo.so %{buildroot}%{_libdir}/xwalk/libffmpegsumo.so
 install -p -D src/out/Release/xwalk.pak %{buildroot}%{_libdir}/xwalk/xwalk.pak
 mkdir -p %{buildroot}%{_datadir}/xwalk
-install -p -D src/xwalk/application/common/installer/tizen/configuration/*.xsd %{buildroot}%{_datadir}/xwalk/
+install -p -D src/xwalk/application/common/tizen/configuration/*.xsd %{buildroot}%{_datadir}/xwalk/
 
 # PNaCl
 %if ! %{_disable_nacl}

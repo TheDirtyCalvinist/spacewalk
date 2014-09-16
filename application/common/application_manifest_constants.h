@@ -6,6 +6,7 @@
 #define XWALK_APPLICATION_COMMON_APPLICATION_MANIFEST_CONSTANTS_H_
 
 #include "xwalk/application/common/manifest.h"
+#include "xwalk/application/common/package/package.h"
 // Keys used in JSON representation of applications.
 namespace xwalk {
 namespace application_manifest_keys {
@@ -118,10 +119,7 @@ namespace application_manifest_errors {
 }  // namespace application_manifest_errors
 
 namespace application {
-
-typedef application::Manifest Manifest;
 const char* GetNameKey(Package::Type type);
-const char* GetLaunchLocalPathKey(Package::Type type);
 const char* GetCSPKey(Package::Type type);
 #if defined(OS_TIZEN)
 const char* GetTizenAppIdKey(Package::Type type);

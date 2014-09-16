@@ -145,6 +145,12 @@ public class XWalkPreferencesInternal {
      */
     static final String ENABLE_JAVASCRIPT = "enable-javascript";
 
+    /**
+     * The key string to enable/disable xwalk extensions.
+     *
+     */
+    static final String ENABLE_EXTENSIONS = "enable-extensions";
+
     static {
         sPrefMap.put(REMOTE_DEBUGGING, new PreferenceValue(false));
         sPrefMap.put(ANIMATABLE_XWALK_VIEW, new PreferenceValue(false));
@@ -153,6 +159,7 @@ public class XWalkPreferencesInternal {
         sPrefMap.put(ALLOW_UNIVERSAL_ACCESS_FROM_FILE, new PreferenceValue(false));
         sPrefMap.put(SUPPORT_MULTIPLE_WINDOWS, new PreferenceValue(true));
         sPrefMap.put(PROFILE_NAME, new PreferenceValue("Default"));
+        sPrefMap.put(ENABLE_EXTENSIONS, new PreferenceValue(true));
     }
 
     /**

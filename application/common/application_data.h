@@ -24,6 +24,7 @@
 #include "url/gurl.h"
 #include "xwalk/application/common/manifest.h"
 #include "xwalk/application/common/permission_types.h"
+#include "xwalk/application/common/package/package.h"
 
 namespace base {
 class DictionaryValue;
@@ -71,9 +72,6 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
       const base::DictionaryValue& manifest_data,
       const std::string& explicit_id,
       std::string* error_message);
-
-  static scoped_refptr<ApplicationData> Create(const GURL& url,
-                                               std::string* error_message);
 
   Manifest::Type GetType() const;
 
