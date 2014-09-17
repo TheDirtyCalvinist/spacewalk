@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Rect;
+import android.graphics.Bitmap;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
@@ -678,6 +679,14 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         if (mContentViewRenderView != null) {
             mContentViewRenderView.setOverlayVideoMode(enabled);
         }
+    }
+
+    public void setDrawingCacheEnabled(boolean enabled){
+        mContentViewRenderView.setDrawingCacheEnabled(enabled);
+    }
+
+    public Bitmap getDrawingCache(){
+        return mContentViewRenderView.getDrawingCache();
     }
 
     private native long nativeInit(XWalkWebContentsDelegate webViewContentsDelegate,

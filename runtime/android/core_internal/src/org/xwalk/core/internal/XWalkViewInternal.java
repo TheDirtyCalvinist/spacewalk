@@ -11,6 +11,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Rect;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -24,6 +25,7 @@ import android.widget.FrameLayout;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.Override;
 import java.lang.ref.WeakReference;
 
 import org.chromium.base.ActivityState;
@@ -965,4 +967,15 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
                 break;
         }
     }
+
+    @XWalkAPI
+    public void setDrawingCacheEnabled(boolean enabled){
+        mContent.setDrawingCacheEnabled(enabled);
+    }
+
+    @XWalkAPI
+    public Bitmap getDrawingCache(){
+        return mContent.getDrawingCache();
+    }
+
 }
