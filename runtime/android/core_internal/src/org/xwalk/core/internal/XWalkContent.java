@@ -13,6 +13,7 @@ import android.graphics.Rect;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
+import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
 import android.text.TextUtils;
@@ -814,6 +815,14 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     public boolean canZoomOut() {
         if (mNativeContent == 0) return false;
         return mContentViewCore.canZoomOut();
+    }
+
+    public Bitmap getDrawingCache(){
+        View view = mContentViewRenderView.getChildAt(0);
+        if(view instanceof TextureView){
+            return ((TextureView) view).getBitmap();
+        }
+        return super.getDrawingCache();
     }
 
     private native long nativeInit();
