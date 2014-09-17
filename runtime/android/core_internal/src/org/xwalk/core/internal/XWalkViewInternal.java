@@ -12,6 +12,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -31,6 +32,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.Override;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -1116,6 +1118,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         }
     }
 
+<<<<<<< HEAD
     /**
      * Tell the client to show a file chooser.
      * @param uploadFile the callback class to handle the result from caller. It MUST
@@ -1166,7 +1169,6 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     @XWalkAPI
-<<<<<<< HEAD
     public Object getLastHitTestData() {
         return mContent.getHitTestData().data();
     }
@@ -1209,8 +1211,9 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         return mContent.getContentViewCoreForTest();
     }
 
-    public String[] getLastHitTestData(){
-        return mContent.getHitTestData().data();
+    @XWalkAPI
+    public void setDrawingCacheEnabled(boolean enabled){
+        mContent.setDrawingCacheEnabled(enabled);
     }
 
     @XWalkAPI
