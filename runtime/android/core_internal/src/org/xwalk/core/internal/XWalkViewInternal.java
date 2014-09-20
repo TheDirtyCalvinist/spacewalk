@@ -26,7 +26,9 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.Override;
+import java.lang.String;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApplicationStatus;
@@ -974,7 +976,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     @XWalkAPI
-    public String[] getLastHitTestData(){
+    public Object getLastHitTestData(){
         return mContent.getHitTestData().data();
     }
 
