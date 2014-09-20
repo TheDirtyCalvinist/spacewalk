@@ -16,9 +16,6 @@
         '../../../third_party/zlib/google/zip.gyp:zip',
       ],
       'sources': [
-        'application_storage.cc',
-        'application_storage.h',
-
         'application_data.cc',
         'application_data.h',
         'application_file_util.cc',
@@ -27,8 +24,6 @@
         'application_manifest_constants.h',
         'application_resource.cc',
         'application_resource.h',
-        'application_storage_constants.cc',
-        'application_storage_constants.h',
         'constants.cc',
         'constants.h',
         'id_util.cc',
@@ -62,10 +57,17 @@
             '../../build/system.gyp:tizen',
             '../../tizen/xwalk_tizen.gypi:xwalk_tizen_lib',
             '../../../third_party/re2/re2.gyp:re2',
+            '../../../net/net.gyp:net',
           ],
+          'cflags': [
+            '<!@(pkg-config --cflags xmlsec1)',
+          ],
+          'link_settings': {
+            'libraries': [
+              '<!@(pkg-config --libs-only-l xmlsec1)',
+            ],
+          },
           'sources': [
-            'application_storage_impl_tizen.cc',
-            'application_storage_impl_tizen.h',
             'manifest_handlers/navigation_handler.cc',
             'manifest_handlers/navigation_handler.h',
             'manifest_handlers/tizen_application_handler.cc',
@@ -76,21 +78,21 @@
             'manifest_handlers/tizen_setting_handler.h',
             'manifest_handlers/tizen_splash_screen_handler.cc',
             'manifest_handlers/tizen_splash_screen_handler.h',
-            'tizen/package_path.cc',
-            'tizen/package_path.h',
+            'tizen/application_storage.cc',
+            'tizen/application_storage.h',
+            'tizen/application_storage_impl.cc',
+            'tizen/application_storage_impl.h',
+            'tizen/package_query.cc',
+            'tizen/package_query.h',
             'tizen/signature_data.h',
             'tizen/signature_data.cc',
             'tizen/signature_parser.h',
             'tizen/signature_parser.cc',
             'tizen/signature_validator.cc',
             'tizen/signature_validator.h',
-
+            'tizen/signature_xmlsec_adaptor.cc',
+            'tizen/signature_xmlsec_adaptor.h',
           ],
-        }, {
-        'sources': [
-            'application_storage_impl.cc',
-            'application_storage_impl.h',
-          ]
         }],
       ],
       'include_dirs': [

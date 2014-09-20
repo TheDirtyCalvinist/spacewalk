@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # get xwalk absolute path so we can run this script from any location
 xwalk_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,8 @@ from customize import VerifyPackageName, CustomizeAll, \
                       ParseParameterForCompressor
 from extension_manager import GetExtensionList, GetExtensionStatus
 from handle_permissions import permission_mapping_table
-from util import AllArchitectures, CleanDir, GetVersion, RunCommand
+from util import AllArchitectures, CleanDir, GetVersion, RunCommand, \
+                 CreateAndCopyDir
 from manifest_json_parser import HandlePermissionList
 from manifest_json_parser import ManifestJsonParser
 
@@ -42,9 +44,9 @@ def AddExeExtensions(name):
   exts_str = os.environ.get('PATHEXT', '').lower()
   exts = [_f for _f in exts_str.split(os.pathsep) if _f]
   result = []
-  result.append(name)
   for e in exts:
     result.append(name + e)
+  result.append(name)
   return result
 
 
@@ -60,11 +62,11 @@ def Which(name):
   return None
 
 
-def GetAndroidApiLevel():
+def GetAndroidApiLevel(android_path):
   """Get Highest Android target level installed.
      return -1 if no targets have been found.
   """
-  target_output = RunCommand(['android', 'list', 'target', '-c'])
+  target_output = RunCommand([android_path, 'list', 'target', '-c'])
   target_regex = re.compile(r'android-(\d+)')
   targets = [int(i) for i in target_regex.findall(target_output)]
   targets.extend([-1])
@@ -107,7 +109,7 @@ def ParseManifest(options):
 
 
 def ParseXPK(options, out_dir):
-  cmd = ['python', os.path.join (xwalk_dir, 'parse_xpk.py'),
+  cmd = ['python', os.path.join(xwalk_dir, 'parse_xpk.py'),
          '--file=%s' % os.path.expanduser(options.xpk),
          '--out=%s' % out_dir]
   RunCommand(cmd)
@@ -181,12 +183,12 @@ def GetExtensionBinaryPathList():
                                              item,
                                              data["binary_path"])
       else:
-        print "The extension \"%s\" doesn't exists." % item
+        print("The extension \"%s\" doesn't exists." % item)
         sys.exit(1)
     if os.path.isdir(extension_binary_path):
       local_extension_list.append(extension_binary_path)
     else:
-      print "The extension \"%s\" doesn't exists." % item
+      print("The extension \"%s\" doesn't exists." % item)
       sys.exit(1)
 
   return local_extension_list
@@ -205,6 +207,8 @@ def Customize(options, app_info, manifest):
     app_info.app_root = os.path.expanduser(options.app_root)
   if options.enable_remote_debugging:
     app_info.remote_debugging = '--enable-remote-debugging'
+  if options.use_animatable_view:
+    app_info.use_animatable_view = '--use-animatable-view'
   if options.fullscreen:
     app_info.fullscreen_flag = '-f'
   if options.orientation:
@@ -216,7 +220,7 @@ def Customize(options, app_info, manifest):
   extension_binary_path_list = GetExtensionBinaryPathList()
   if len(extension_binary_path_list) > 0:
     if options.extensions is None:
-      options.extensions = "" 
+      options.extensions = ""
     else:
       options.extensions += os.pathsep
 
@@ -233,13 +237,14 @@ def Customize(options, app_info, manifest):
 
 
 def Execution(options, name):
+  app_dir = os.path.join(tempfile.gettempdir(), name)
   android_path = Which('android')
   if android_path is None:
     print('The "android" binary could not be found. Check your Android SDK '
           'installation and your PATH environment variable.')
     sys.exit(1)
 
-  api_level = GetAndroidApiLevel()
+  api_level = GetAndroidApiLevel(android_path)
   if api_level < 14:
     print('Please install Android API level (>=14) first.')
     sys.exit(3)
@@ -269,36 +274,31 @@ def Execution(options, name):
     key_alias_code = 'xwalkdebug'
 
   # Check whether ant is installed.
-  try:
-    cmd = ['ant', '-version']
-    RunCommand(cmd, shell=True)
-  except EnvironmentError:
-    print('Please install ant first.')
+  ant_path = Which('ant')
+  if ant_path is None:
+    print('Ant could not be found. Please make sure it is installed.')
     sys.exit(4)
 
   # Update android project for app and xwalk_core_library.
-  update_project_cmd = ['android', 'update', 'project',
-                        '--path', os.path.join (xwalk_dir, name),
+  update_project_cmd = [android_path, 'update', 'project',
+                        '--path', app_dir,
                         '--target', target_string,
                         '--name', name]
   if options.mode == 'embedded':
-    RunCommand(['android', 'update', 'lib-project',
-                '--path', os.path.join(xwalk_dir, name, 'xwalk_core_library'),
+    RunCommand([android_path, 'update', 'lib-project',
+                '--path', os.path.join(app_dir, 'xwalk_core_library'),
                 '--target', target_string])
     update_project_cmd.extend(['-l', 'xwalk_core_library'])
-  else:
-    # Shared mode doesn't need xwalk_runtime_java.jar.
-    os.remove(os.path.join(xwalk_dir, name, 'libs', 'xwalk_runtime_java.jar'))
 
   RunCommand(update_project_cmd)
 
   # Check whether external extensions are included.
   extensions_string = 'xwalk-extensions'
-  extensions_dir = os.path.join(xwalk_dir, name, extensions_string)
+  extensions_dir = os.path.join(app_dir, extensions_string)
   external_extension_jars = FindExtensionJars(extensions_dir)
   for external_extension_jar in external_extension_jars:
     shutil.copyfile(external_extension_jar,
-                    os.path.join(xwalk_dir, name, 'libs',
+                    os.path.join(app_dir, 'libs',
                                  os.path.basename(external_extension_jar)))
 
   if options.mode == 'embedded':
@@ -310,13 +310,12 @@ def Execution(options, name):
     if not arch:
       print ('Invalid CPU arch: %s.' % arch)
       sys.exit(10)
-    library_lib_path = os.path.join(xwalk_dir, name, 'xwalk_core_library',
-                                    'libs')
+    library_lib_path = os.path.join(app_dir, 'xwalk_core_library', 'libs')
     for dir_name in os.listdir(library_lib_path):
       lib_dir = os.path.join(library_lib_path, dir_name)
       if ContainsNativeLibrary(lib_dir):
         shutil.rmtree(lib_dir)
-    native_lib_path = os.path.join(xwalk_dir, name, 'native_libs', arch)
+    native_lib_path = os.path.join(app_dir, 'native_libs', arch)
     if ContainsNativeLibrary(native_lib_path):
       shutil.copytree(native_lib_path, os.path.join(library_lib_path, arch))
     else:
@@ -324,22 +323,26 @@ def Execution(options, name):
             'embedded APK.' % arch)
       sys.exit(10)
 
-  ant_cmd = ['ant', 'release', '-f', os.path.join(xwalk_dir, name, 'build.xml')]
+  if options.project_only:
+    return
+
+  # Build the APK
+  ant_cmd = [ant_path, 'release', '-f', os.path.join(app_dir, 'build.xml')]
   if not options.verbose:
     ant_cmd.extend(['-quiet'])
-  ant_cmd.extend(['-Dkey.store="%s"' % os.path.abspath(key_store)])
-  ant_cmd.extend(['-Dkey.alias="%s"' % key_alias])
+  ant_cmd.extend(['-Dkey.store=%s' % os.path.abspath(key_store)])
+  ant_cmd.extend(['-Dkey.alias=%s' % key_alias])
   if key_code:
-    ant_cmd.extend(['-Dkey.store.password="%s"' % key_code])
+    ant_cmd.extend(['-Dkey.store.password=%s' % key_code])
   if key_alias_code:
-    ant_cmd.extend(['-Dkey.alias.password="%s"' % key_alias_code])
+    ant_cmd.extend(['-Dkey.alias.password=%s' % key_alias_code])
   ant_result = subprocess.call(ant_cmd)
   if ant_result != 0:
     print('Command "%s" exited with non-zero exit code %d'
           % (' '.join(ant_cmd), ant_result))
     sys.exit(ant_result)
 
-  src_file = os.path.join(xwalk_dir, name, 'bin', '%s-release.apk' % name)
+  src_file = os.path.join(app_dir, 'bin', '%s-release.apk' % name)
   package_name = name
   if options.app_version:
     package_name += ('_' + options.app_version)
@@ -391,19 +394,25 @@ def PrintPackageInfo(options, name, packaged_archs):
 def MakeApk(options, app_info, manifest):
   Customize(options, app_info, manifest)
   name = app_info.android_name
+  app_dir = os.path.join(tempfile.gettempdir(), name)
   packaged_archs = []
   if options.mode == 'shared':
+    # For shared mode, it's not necessary to use the whole xwalk core library,
+    # use xwalk_core_library_java_app_part.jar from it is enough.
+    java_app_part_jar = os.path.join(xwalk_dir, 'xwalk_core_library', 'libs',
+                                     'xwalk_core_library_java_app_part.jar')
+    shutil.copy(java_app_part_jar, os.path.join(app_dir, 'libs'))
     Execution(options, name)
   elif options.mode == 'embedded':
     # Copy xwalk_core_library into app folder and move the native libraries
     # out.
     # When making apk for specified CPU arch, will only include the
     # corresponding native library by copying it back into xwalk_core_library.
-    target_library_path = os.path.join(xwalk_dir, name, 'xwalk_core_library')
+    target_library_path = os.path.join(app_dir, 'xwalk_core_library')
     shutil.copytree(os.path.join(xwalk_dir, 'xwalk_core_library'),
                     target_library_path)
     library_lib_path = os.path.join(target_library_path, 'libs')
-    native_lib_path = os.path.join(xwalk_dir, name, 'native_libs')
+    native_lib_path = os.path.join(app_dir, 'native_libs')
     os.makedirs(native_lib_path)
     available_archs = []
     for dir_name in os.listdir(library_lib_path):
@@ -434,7 +443,25 @@ def MakeApk(options, app_info, manifest):
         print('No packages created, aborting')
         sys.exit(13)
 
-  PrintPackageInfo(options, name, packaged_archs)
+  # if project_dir, save build directory
+  if options.project_dir:
+    save_dir = os.path.join(options.project_dir, name)
+    if CreateAndCopyDir(app_dir, save_dir, True):
+      print ('\nA project directory was created successfully in %s' %
+             save_dir)
+      print ('To generate an APK manually, go to %s and run the '
+             'following command:' % save_dir)
+      print ('  ant release -f build.xml')
+      print ('For more information, see\n'
+             ' http://developer.android.com/tools/building/'
+             'building-cmdline.html')
+    else:
+      print ('Error: Unable to create a project directory during the build. '
+             'Please check the directory passed in --project-dir, '
+             'available disk space, and write permission.')
+
+  if not options.project_only:
+    PrintPackageInfo(options, name, packaged_archs)
 
 def main(argv):
   parser = optparse.OptionParser()
@@ -479,6 +506,7 @@ def main(argv):
           'For example, --app-local-path=/relative/path/of/entry/file')
   group.add_option('--app-local-path', help=info)
   parser.add_option_group(group)
+  # Mandatory options group
   group = optparse.OptionGroup(parser, 'Mandatory arguments',
       'They are used for describing the APK information through '
       'command line options.')
@@ -488,6 +516,7 @@ def main(argv):
           '--package=com.example.YourPackage')
   group.add_option('--package', help=info)
   parser.add_option_group(group)
+  # Optional options group (alphabetical)
   group = optparse.OptionGroup(parser, 'Optional arguments',
       'They are used for various settings for applications through '
       'command line options.')
@@ -501,17 +530,15 @@ def main(argv):
           'be made by adding a prefix based on architecture to the version '
           'code base. For example, --app-versionCodeBase=24')
   group.add_option('--app-versionCodeBase', type='int', help=info)
-  info = ('Use command lines.'
-          'Crosswalk is powered by Chromium and supports Chromium command line.'
-          'For example, '
-          '--xwalk-command-line=\'--chromium-command-1 --xwalk-command-2\'')
-  group.add_option('--xwalk-command-line', default='', help=info)
   info = ('The description of the application. For example, '
           '--description=YourApplicationDescription')
   group.add_option('--description', help=info)
   group.add_option('--enable-remote-debugging', action='store_true',
                    dest='enable_remote_debugging', default=False,
                    help='Enable remote debugging.')
+  group.add_option('--use-animatable-view', action='store_true',
+                   dest='use_animatable_view', default=False,
+                   help='Enable using animatable view (TextureView).')
   info = ('The list of external extension paths splitted by OS separators. '
           'The separators are \':\' , \';\' and \':\' on Linux, Windows and '
           'Mac OS respectively. For example, '
@@ -534,9 +561,22 @@ def main(argv):
   info = ('The list of permissions to be used by web application. For example, '
           '--permissions=geolocation:webgl')
   group.add_option('--permissions', help=info)
-  info = ('Packaging tool will move the output APKS to the target directory')
+  info = ('Create an Android project directory with Crosswalk at this location.'
+          ' (See project-only option below)')
+  group.add_option('--project-dir', help=info)
+  info = ('Must be used with project-dir option. Create an Android project '
+          'directory with Crosswalk but do not build the APK package')
+  group.add_option('--project-only', action='store_true', default=False,
+                   dest='project_only', help=info)
+  info = ('Packaging tool will move the output APKs to the target directory')
   group.add_option('--target-dir', default=os.getcwd(), help=info)
+  info = ('Use command lines.'
+          'Crosswalk is powered by Chromium and supports Chromium command line.'
+          'For example, '
+          '--xwalk-command-line=\'--chromium-command-1 --xwalk-command-2\'')
+  group.add_option('--xwalk-command-line', default='', help=info)
   parser.add_option_group(group)
+  # Keystore options group
   group = optparse.OptionGroup(parser, 'Keystore Options',
       'The keystore is a signature from web developer, it\'s used when '
       'developer wants to distribute the applications.')
@@ -574,7 +614,8 @@ def main(argv):
   xpk_temp_dir = ''
   if options.xpk:
     xpk_name = os.path.splitext(os.path.basename(options.xpk))[0]
-    xpk_temp_dir = os.path.join(xwalk_dir, xpk_name + '_xpk')
+    xpk_temp_dir = os.path.join(tempfile.gettempdir(), xpk_name + '_xpk')
+    CleanDir(xpk_temp_dir)
     ParseXPK(options, xpk_temp_dir)
 
   if options.app_root and not options.manifest:
@@ -641,13 +682,23 @@ def main(argv):
     if not os.path.isdir(target_dir):
       os.makedirs(target_dir)
 
+  if options.project_dir:
+    if options.project_dir == tempfile.gettempdir():
+      print('\nmake_apk.py error: Option --project-dir can not be '
+            'the system temporary\ndirectory.')
+      sys.exit(8)
+  if options.project_only and not options.project_dir:
+    print('\nmake_apk.py error: Option --project-only must be used '
+          'with --project-dir')
+    sys.exit(8)
+
   try:
     MakeApk(options, app_info, manifest)
   except SystemExit as ec:
-    CleanDir(app_info.android_name)
-    CleanDir('out')
-    CleanDir(xpk_temp_dir)
     return ec.code
+  finally:
+    CleanDir(os.path.join(tempfile.gettempdir(), app_info.android_name))
+    CleanDir(xpk_temp_dir)
   return 0
 
 

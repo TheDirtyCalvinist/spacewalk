@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "xwalk/application/common/application_storage_impl_tizen.h"
+#include "xwalk/application/common/tizen/application_storage_impl.h"
 
 #include <ail.h>
 #include <pkgmgr-info.h>
@@ -13,9 +13,9 @@
 #include "base/file_util.h"
 #include "third_party/re2/re2/re2.h"
 #include "xwalk/application/common/application_file_util.h"
-#include "xwalk/application/common/application_storage.h"
 #include "xwalk/application/common/id_util.h"
-#include "xwalk/application/common/tizen/package_path.h"
+#include "xwalk/application/common/tizen/application_storage.h"
+#include "xwalk/application/common/tizen/package_query.h"
 
 namespace {
 
@@ -33,6 +33,21 @@ ail_cb_ret_e appinfo_get_app_id_cb(
 
 const char kXWalkPackageType[] = "wgt";
 
+bool GetPackageType(const std::string& application_id,
+                    xwalk::application::Manifest::Type* package_type) {
+  if (xwalk::application::IsValidWGTID(application_id)) {
+    *package_type = xwalk::application::Manifest::TYPE_WIDGET;
+    return true;
+  }
+
+  if (xwalk::application::IsValidXPKID(application_id)) {
+    *package_type = xwalk::application::Manifest::TYPE_MANIFEST;
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 namespace xwalk {
@@ -48,13 +63,43 @@ bool ApplicationStorageImpl::Init() {
   return true;
 }
 
+namespace {
+
+bool GetManifestType(const std::string& app_id, Manifest::Type* manifest_type) {
+  if (IsValidWGTID(app_id)) {
+    *manifest_type = Manifest::TYPE_WIDGET;
+    return true;
+  }
+
+  if (IsValidXPKID(app_id)) {
+    *manifest_type = Manifest::TYPE_MANIFEST;
+    return true;
+  }
+
+  return false;
+}
+
+}  // namespace
+
 scoped_refptr<ApplicationData> ApplicationStorageImpl::GetApplicationData(
     const std::string& app_id) {
   base::FilePath app_path = GetApplicationPath(app_id);
 
-  std::string error_str;
-  return LoadApplication(
-      app_path, app_id, ApplicationData::INTERNAL, &error_str);
+  Manifest::Type manifest_type;
+  if (!GetManifestType(app_id, &manifest_type)) {
+    LOG(ERROR) << "Failed to detect the manifest type from app id "
+               << app_id;
+    return NULL;
+  }
+
+  std::string error;
+  scoped_refptr<ApplicationData> app_data =
+     LoadApplication(
+         app_path, app_id, ApplicationData::INTERNAL, manifest_type, &error);
+  if (!app_data)
+    LOG(ERROR) << "Error occurred while trying to load application: " << error;
+
+  return app_data;
 }
 
 bool ApplicationStorageImpl::GetInstalledApplicationIDs(

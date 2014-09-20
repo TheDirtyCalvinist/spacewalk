@@ -8,22 +8,28 @@
 #include "xwalk/application/browser/application.h"
 #include "xwalk/application/browser/application_service.h"
 #include "xwalk/application/browser/application_system.h"
+#include "xwalk/application/common/application_file_util.h"
 #include "xwalk/application/test/application_browsertest.h"
 #include "xwalk/application/test/application_testapi.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
 
 using xwalk::application::Application;
 using xwalk::application::ApplicationService;
+using xwalk::application::Manifest;
+using xwalk::application::GetManifestPath;
 
-class ApplicationMultiAppTest : public ApplicationBrowserTest {
+class ApplicationTest : public ApplicationBrowserTest {
 };
 
-IN_PROC_BROWSER_TEST_F(ApplicationMultiAppTest, TestMultiApp) {
+IN_PROC_BROWSER_TEST_F(ApplicationTest, TestMultiApp) {
   ApplicationService* service = application_sevice();
   const size_t currently_running_count = service->active_applications().size();
   // Launch the first app.
-  Application* app1 = service->LaunchFromUnpackedPath(
-      test_data_dir_.Append(FILE_PATH_LITERAL("dummy_app1")));
+  base::FilePath manifest_path =
+      GetManifestPath(test_data_dir_.Append(FILE_PATH_LITERAL("dummy_app1")),
+      Manifest::TYPE_MANIFEST);
+  Application* app1 = service->LaunchFromManifestPath(
+      manifest_path, Manifest::TYPE_MANIFEST);
   ASSERT_TRUE(app1);
   // Wait for app is fully loaded.
   test_runner_->WaitForTestNotification();
@@ -36,13 +42,16 @@ IN_PROC_BROWSER_TEST_F(ApplicationMultiAppTest, TestMultiApp) {
 
   // Verify that no new App instance was created, if one exists
   // with the same ID.
-  Application* failed_app1 = service->LaunchFromUnpackedPath(
-      test_data_dir_.Append(FILE_PATH_LITERAL("dummy_app1")));
+  Application* failed_app1 = service->LaunchFromManifestPath(
+      manifest_path, Manifest::TYPE_MANIFEST);
   ASSERT_FALSE(failed_app1);
 
   // Launch the second app.
-  Application* app2 = service->LaunchFromUnpackedPath(
-      test_data_dir_.Append(FILE_PATH_LITERAL("dummy_app2")));
+  manifest_path =
+      GetManifestPath(test_data_dir_.Append(FILE_PATH_LITERAL("dummy_app2")),
+          Manifest::TYPE_MANIFEST);
+  Application* app2 = application_sevice()->LaunchFromManifestPath(
+      manifest_path, Manifest::TYPE_MANIFEST);
   ASSERT_TRUE(app2);
   // Wait for app is fully loaded.
   test_runner_->PostResultToNotificationCallback();
@@ -67,4 +76,13 @@ IN_PROC_BROWSER_TEST_F(ApplicationMultiAppTest, TestMultiApp) {
   app2->Terminate();
   content::RunAllPendingInMessageLoop();
   EXPECT_EQ(service->active_applications().size(), currently_running_count);
+}
+
+IN_PROC_BROWSER_TEST_F(ApplicationTest, TestUnsafeStartURL) {
+  base::FilePath manifest_path = GetManifestPath(
+      test_data_dir_.Append(FILE_PATH_LITERAL("unsafe_start_URL")),
+      Manifest::TYPE_MANIFEST);
+  Application* app = application_sevice()->LaunchFromManifestPath(
+      manifest_path, Manifest::TYPE_MANIFEST);
+  EXPECT_EQ(NULL, app);
 }

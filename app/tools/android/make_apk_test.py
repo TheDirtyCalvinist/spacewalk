@@ -133,6 +133,7 @@ class TestMakeApk(unittest.TestCase):
     if options.mode == 'embedded':
       native_library_dir = os.path.join('xwalk_core_library', 'libs')
       native_library_temp_dir = 'temp'
+      Clean('temp', '0') # May be left over from aborted tests
       shutil.copytree(native_library_dir, native_library_temp_dir)
       for root, _, files in os.walk(native_library_dir):
         if 'libxwalkcore.so' in files:
@@ -165,22 +166,25 @@ class TestMakeApk(unittest.TestCase):
       arch_list.append('arm')
     return arch_list
 
-  def checkApks(self, apk_name, app_version):
-    # Check whether some files are contained in the given APK.
+  def checkApks(self, apk_name, app_version, keystore_path=None):
+    apks = []
     if self._mode.find('shared') != -1:
       apk_path = '%s_%s.apk' % (apk_name, app_version)
-      self.checkApk(apk_path, '')
+      apks.append((apk_path, ''))
     elif self._mode.find('embedded') != -1:
       x86_apk_path = '%s_%s_x86.apk' % (apk_name, app_version)
       if os.path.exists(x86_apk_path):
-        self.checkApk(x86_apk_path, 'x86')
+        apks.append((x86_apk_path, 'x86'))
       arm_apk_path = '%s_%s_arm.apk' % (apk_name, app_version)
       if os.path.exists(arm_apk_path):
-        self.checkApk(arm_apk_path, 'arm')
+        apks.append((arm_apk_path, 'arm'))
 
-  def checkApk(self, apk_path, arch):
-    # Check whether some files are contained in the given apk
-    # for specified arch.
+    for apk, apk_arch in apks:
+      self.checkApk(apk, apk_arch, keystore_path)
+
+  def checkApk(self, apk_path, arch, keystore_path=None):
+    """Checks whether some files are contained in the given APK,
+    and optionally verifies its signature."""
     cmd = ['jar', 'tvf', apk_path]
     out = RunCommand(cmd)
     common_files = ['AndroidManifest.xml', 'classes.dex']
@@ -198,6 +202,12 @@ class TestMakeApk(unittest.TestCase):
       self.assertTrue(out.find('x86/libxwalkcore.so') != -1)
     elif arch == 'arm':
       self.assertTrue(out.find('armeabi-v7a/libxwalkcore.so') != -1)
+
+    if keystore_path:
+      cmd = ['jarsigner', '-verify', '-keystore', keystore_path,
+             '-verbose', apk_path]
+      out = RunCommand(cmd)
+      self.assertIn('smk', out)
 
   def testName(self):
     cmd = ['python', 'make_apk.py', '--app-version=1.0.0',
@@ -223,7 +233,8 @@ class TestMakeApk(unittest.TestCase):
     cmd = ['python', 'make_apk.py', '--name=Example',
            '--package=org.xwalk.example', '--app-version=1.0.0',
            '--description=a sample application',
-           '--app-url=http://www.intel.com', self._mode]
+           '--app-url=http://www.intel.com',
+           '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -239,7 +250,9 @@ class TestMakeApk(unittest.TestCase):
            '--package=org.xwalk.example', '--app-version=1.0.0',
            '--description=a sample application',
            '--app-versionCode=3',
-           '--app-url=http://www.intel.com', self._mode]
+           '--app-url=http://www.intel.com',
+           '--project-dir=.',
+           self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -265,7 +278,9 @@ class TestMakeApk(unittest.TestCase):
            '--description=a sample application',
            '--app-versionCodeBase=3',
            arch,
-           '--app-url=http://www.intel.com', self._mode]
+           '--app-url=http://www.intel.com',
+           '--project-dir=.',
+           self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -289,7 +304,9 @@ class TestMakeApk(unittest.TestCase):
            '--description=a sample application',
            '--app-versionCodeBase=30000000',
            arch,
-           '--app-url=http://www.intel.com', self._mode]
+           '--app-url=http://www.intel.com',
+           '--project-dir=.',
+           self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -298,7 +315,9 @@ class TestMakeApk(unittest.TestCase):
   def testPermissions(self):
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--permissions=geolocation',
-           '--app-url=http://www.intel.com', self._mode]
+           '--app-url=http://www.intel.com',
+           '--project-dir=.',
+           self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -430,7 +449,7 @@ class TestMakeApk(unittest.TestCase):
     icon = os.path.join('test_data', 'manifest', 'icons', 'icon_96.png')
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '--icon=%s' % icon, self._mode]
+           '--icon=%s' % icon, '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -443,7 +462,7 @@ class TestMakeApk(unittest.TestCase):
     manifest_path = os.path.join('test_data', 'manifest', 'manifest_icon.json')
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '--manifest=%s' % manifest_path, self._mode]
+           '--manifest=%s' % manifest_path, '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -455,7 +474,7 @@ class TestMakeApk(unittest.TestCase):
   def testFullscreen(self):
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '-f', self._mode]
+           '-f', '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     theme = 'Example/res/values-v14/theme.xml'
@@ -470,7 +489,7 @@ class TestMakeApk(unittest.TestCase):
   def testEnableRemoteDebugging(self):
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '--enable-remote-debugging', self._mode]
+           '--enable-remote-debugging', '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     activity = 'Example/src/org/xwalk/example/ExampleActivity.java'
@@ -483,13 +502,40 @@ class TestMakeApk(unittest.TestCase):
     manifest_path = os.path.join('test_data', 'manifest', 'manifest.json')
     cmd = ['python', 'make_apk.py', '--enable-remote-debugging',
            '--package=org.xwalk.example',
-           '--manifest=%s' % manifest_path, self._mode]
+           '--manifest=%s' % manifest_path,
+           '--project-dir=.',
+           self._mode]
     RunCommand(cmd)
     activity = 'Example/src/org/xwalk/example/ExampleActivity.java'
     with open(activity, 'r') as content_file:
       content = content_file.read()
     self.assertTrue(os.path.exists(activity))
     self.assertTrue(content.find('setRemoteDebugging') != -1)
+    self.checkApks('Example', '1.0.0')
+
+  def testUseAnimatableView(self):
+    cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
+           '--package=org.xwalk.example', '--app-url=http://www.intel.com',
+           '--use-animatable-view', self._mode]
+    RunCommand(cmd)
+    self.addCleanup(Clean, 'Example', '1.0.0')
+    activity = 'Example/src/org/xwalk/example/ExampleActivity.java'
+    with open(activity, 'r') as content_file:
+      content = content_file.read()
+    self.assertTrue(os.path.exists(activity))
+    self.assertTrue(content.find('setUseAnimatableView') != -1)
+    self.checkApks('Example', '1.0.0')
+    Clean('Example', '1.0.0')
+    manifest_path = os.path.join('test_data', 'manifest', 'manifest.json')
+    cmd = ['python', 'make_apk.py', '--use-animatable-view',
+           '--package=org.xwalk.example',
+           '--manifest=%s' % manifest_path, self._mode]
+    RunCommand(cmd)
+    activity = 'Example/src/org/xwalk/example/ExampleActivity.java'
+    with open(activity, 'r') as content_file:
+      content = content_file.read()
+    self.assertTrue(os.path.exists(activity))
+    self.assertTrue(content.find('setUseAnimatableView') != -1)
     self.checkApks('Example', '1.0.0')
 
   def testKeystore(self):
@@ -499,23 +545,34 @@ class TestMakeApk(unittest.TestCase):
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
            '--keystore-path=%s' % keystore_path, '--keystore-alias=xwalk-test',
            '--keystore-passcode=xwalk-test',
-           '--keystore-alias-passcode=xwalk-test', self._mode]
+           '--keystore-alias-passcode=xwalk-test',
+           '--project-dir=.', self._mode]
     RunCommand(cmd)
-    self.addCleanup(Clean, 'Example', '1.0.0')
-    self.assertTrue(os.path.exists('Example'))
-    apk_list = ['Example.apk', 'Example_x86.apk', 'Example_arm.apk']
-    for apk in apk_list:
-      if os.path.isfile(apk):
-        cmd = ['jarsigner', '-verify', '-keystore',
-               keystore_path, '-verbose', apk]
-        out = RunCommand(cmd)
-        self.assertTrue(out.find('smk') != -1)
-    self.checkApks('Example', '1.0.0')
+    self.assertTrue(os.path.isdir('Example'))
+    self.checkApks('Example', '1.0.0', keystore_path)
+    Clean('Example', '1.0.0')
+
+    keystore_path_with_space = os.path.join(
+      'test_data', 'keystore', 'test keystore')
+    shutil.copy2(keystore_path, keystore_path_with_space)
+    keystore_path = os.path.join('test_data', 'keystore',
+                                 'xwalk-test.keystore')
+    cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
+           '--package=org.xwalk.example', '--app-url=http://www.intel.com',
+           '--keystore-path=%s' % keystore_path_with_space,
+           '--keystore-alias=xwalk test',
+           '--keystore-passcode=xwalk-test',
+           '--keystore-alias-passcode=xwalk test',
+           '--project-dir=.', self._mode]
+    RunCommand(cmd)
+    self.assertTrue(os.path.isdir('Example'))
+    self.checkApks('Example', '1.0.0', keystore_path_with_space)
+    Clean('Example', '1.0.0')
 
   def testManifest(self):
     manifest_path = os.path.join('test_data', 'manifest', 'manifest.json')
     cmd = ['python', 'make_apk.py', '--package=org.xwalk.example',
-           '--manifest=%s' % manifest_path, self._mode]
+           '--manifest=%s' % manifest_path, '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -545,7 +602,7 @@ class TestMakeApk(unittest.TestCase):
     manifest_path = os.path.join('test_data', 'manifest',
                                  'manifest_app_launch_local_path.json')
     cmd = ['python', 'make_apk.py', '--package=org.xwalk.example',
-           '--manifest=%s' % manifest_path, self._mode]
+           '--manifest=%s' % manifest_path, '--project-dir=.', self._mode]
     out = RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     self.assertTrue(out.find('no app launch path') == -1)
@@ -640,7 +697,7 @@ class TestMakeApk(unittest.TestCase):
     extension_path = 'test_data/extensions/myextension'
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '--extensions=%s' % extension_path, self._mode]
+           '--extensions=%s' % extension_path, '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     self.assertTrue(os.path.exists('Example'))
@@ -675,7 +732,8 @@ class TestMakeApk(unittest.TestCase):
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-root=%s' % test_entry_root,
            '--app-local-path=contactextension.html',
-           '--extensions=%s' % extension_path, self._mode]
+           '--extensions=%s' % extension_path,
+           '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     self.assertTrue(os.path.exists('Example'))
@@ -690,7 +748,7 @@ class TestMakeApk(unittest.TestCase):
   def testXPK(self):
     xpk_file = os.path.join('test_data', 'xpk', 'example.xpk')
     cmd = ['python', 'make_apk.py', '--package=org.xwalk.example',
-           '--xpk=%s' % xpk_file, self._mode]
+           '--xpk=%s' % xpk_file, '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     self.assertTrue(os.path.exists('Example'))
@@ -699,7 +757,7 @@ class TestMakeApk(unittest.TestCase):
   def testXPKWithError(self):
     xpk_file = os.path.join('test_data', 'xpk', 'error.xpk')
     cmd = ['python', 'make_apk.py', '--package=org.xwalk.example',
-           '--xpk=%s' % xpk_file, self._mode]
+           '--xpk=%s' % xpk_file, '--project-dir=.', self._mode]
     out = RunCommand(cmd)
     error_msg = 'XPK doesn\'t contain manifest file'
     self.assertTrue(out.find(error_msg) != -1)
@@ -708,7 +766,7 @@ class TestMakeApk(unittest.TestCase):
   def testOrientation(self):
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '--orientation=landscape', self._mode]
+           '--orientation=landscape', '--project-dir=.', self._mode]
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     manifest = 'Example/AndroidManifest.xml'
@@ -771,7 +829,7 @@ class TestMakeApk(unittest.TestCase):
   def testVerbose(self):
     cmd = ['python', 'make_apk.py', '--name=Example', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '--verbose', self._mode]
+           '--verbose', '--project-dir=.', self._mode]
     result = RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     self.assertTrue(result.find('aapt') != -1)
@@ -802,7 +860,8 @@ class TestMakeApk(unittest.TestCase):
            '--name=Example',
            '--orientation=landscape',
            '--package=org.xwalk.example',
-           '--permissions=geolocation']
+           '--permissions=geolocation',
+           '--project-dir=.']
     RunCommand(cmd)
     self.addCleanup(Clean, 'Example', '1.0.0')
     activity = 'Example/src/org/xwalk/example/ExampleActivity.java'
@@ -856,7 +915,8 @@ class TestMakeApk(unittest.TestCase):
            '--app-version=1.0.0',
            '--name=Example',
            '--package=org.xwalk.example',
-           '--verbose']
+           '--verbose',
+           '--project-dir=.']
     RunCommand(cmd)
     manifest = 'Example/AndroidManifest.xml'
     if not os.path.exists(manifest):
@@ -890,7 +950,7 @@ class TestMakeApk(unittest.TestCase):
     Clean('Example', '1.0.0')
     manifest_path = os.path.join('test_data', 'launchScreen', 'manifest.json')
     cmd = ['python', 'make_apk.py', '--package=org.xwalk.example',
-           '--manifest=%s' % manifest_path, self._mode]
+           '--manifest=%s' % manifest_path, '--project-dir=.', self._mode]
     RunCommand(cmd)
     # Check theme.xml.
     theme_path = os.path.join('Example', 'res', 'values-v14', 'theme.xml')
@@ -972,7 +1032,8 @@ class TestMakeApk(unittest.TestCase):
            '--name=%s' % name,
            '--package=org.xwalk.example',
            '--compressor',
-           '--app-root=%s' % app_root]
+           '--app-root=%s' % app_root,
+           '--project-dir=.']
     RunCommand(cmd)
     CompareSizeForCompressor('all', css_file, 'css', name, fun)
     CompareSizeForCompressor('all', js_file, 'js', name, fun)
@@ -981,7 +1042,8 @@ class TestMakeApk(unittest.TestCase):
            '--name=%s' % name,
            '--package=org.xwalk.example',
            '--app-root=%s' % app_root,
-           '--compressor']
+           '--compressor',
+           '--project-dir=.']
     RunCommand(cmd)
     CompareSizeForCompressor('all', css_file, 'css', name, fun)
     CompareSizeForCompressor('all', js_file, 'js', name, fun)
@@ -990,7 +1052,8 @@ class TestMakeApk(unittest.TestCase):
            '--name=%s' % name,
            '--package=org.xwalk.example',
            '--compressor=js',
-           '--app-root=%s' % app_root]
+           '--app-root=%s' % app_root,
+           '--project-dir=.']
     RunCommand(cmd)
     CompareSizeForCompressor('js', js_file, 'js', name, fun)
 
@@ -998,14 +1061,16 @@ class TestMakeApk(unittest.TestCase):
            '--name=%s' % name,
            '--package=org.xwalk.example',
            '--compressor=css',
-           '--app-root=%s' % app_root]
+           '--app-root=%s' % app_root,
+           '--project-dir=.']
     RunCommand(cmd)
     CompareSizeForCompressor('css', css_file, 'css', name, fun)
 
     cmd = ['python', 'customize.py',
            '--name=%s' % name,
            '--package=org.xwalk.example',
-           '--app-root=%s' % app_root]
+           '--app-root=%s' % app_root,
+           '--project-dir=.']
     RunCommand(cmd)
     CompareSizeForCompressor(None, css_file, 'css', name, fun)
     CompareSizeForCompressor(None, js_file, 'js', name, fun)
@@ -1014,7 +1079,8 @@ class TestMakeApk(unittest.TestCase):
            '--name=%s' % name,
            '--package=org.xwalk.example',
            '--app-root=%s' % app_root,
-           '--compressor=other']
+           '--compressor=other',
+           '--project-dir=.']
     RunCommand(cmd)
     CompareSizeForCompressor(None, css_file, 'css', name, fun)
     CompareSizeForCompressor(None, js_file, 'js', name, fun)
@@ -1035,14 +1101,15 @@ class TestMakeApk(unittest.TestCase):
     xml_path = 'Example/AndroidManifest.xml'
     piece_content = 'android:label="%s"' % '你好'
     cmd = ['python', 'make_apk.py', '--name=你好', '--app-version=1.0.0',
-           '--package=org.xwalk.example', '--app-url=http://www.intel.com']
+           '--package=org.xwalk.example', '--app-url=http://www.intel.com',
+           '--project-dir=.']
     RunCommand(cmd)
     self.VerifyResultInXMLFile(xml_path, piece_content)
 
     manifest_path = os.path.join('test_data', 'manifest', 'invalidchars',
                                  'manifest_with_chinese_name.json')
     cmd = ['python', 'make_apk.py', '--package=org.xwalk.example',
-           '--manifest=%s' % manifest_path]
+           '--manifest=%s' % manifest_path, '--project-dir=.']
     RunCommand(cmd)
     self.VerifyResultInXMLFile(xml_path, piece_content)
 
@@ -1052,14 +1119,14 @@ class TestMakeApk(unittest.TestCase):
     piece_content = '<string name="description">%s</string>' % '你好'
     cmd = ['python', 'make_apk.py', '--name=hello', '--app-version=1.0.0',
            '--package=org.xwalk.example', '--app-url=http://www.intel.com',
-           '--description=你好']
+           '--description=你好', '--project-dir=.']
     RunCommand(cmd)
     self.VerifyResultInXMLFile(xml_path, piece_content)
 
     manifest_path = os.path.join('test_data', 'manifest',
                                  'manifest_description_dbcs.json')
     cmd = ['python', 'make_apk.py', '--package=org.xwalk.example',
-           '--manifest=%s' % manifest_path]
+           '--manifest=%s' % manifest_path, '--project-dir=.']
     RunCommand(cmd)
     piece_content = '"description">%s</string>' % '你好 a sample description'
     self.VerifyResultInXMLFile(xml_path, piece_content)

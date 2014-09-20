@@ -15,7 +15,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/singleton.h"
-#include "xwalk/application/common/application_storage.h"
+#include "xwalk/application/common/tizen/application_storage.h"
 
 template <typename Type>
 struct PkgmgrBackendPluginTraits : DefaultSingletonTraits<Type> {
@@ -36,12 +36,13 @@ class PkgmgrBackendPlugin {
  private:
   PkgmgrBackendPlugin();
 
-  void SaveInfo(xwalk::application::ApplicationData* app_data,
+  void SaveInfo(scoped_refptr<xwalk::application::ApplicationData> app_data,
                 package_manager_pkg_info_t* pkg_detail_info);
-  void SaveDetailInfo(xwalk::application::ApplicationData* app_data,
-                      package_manager_pkg_detail_info_t* pkg_detail_info);
+  void SaveDetailInfo(
+      scoped_refptr<xwalk::application::ApplicationData> app_data,
+      package_manager_pkg_detail_info_t* pkg_detail_info);
   scoped_refptr<xwalk::application::ApplicationData> GetApplicationDataFromPkg(
-      const std::string& pkg_path);
+      const std::string& pkg_path, base::ScopedTempDir* dir);
 
   friend struct DefaultSingletonTraits<PkgmgrBackendPlugin>;
 
