@@ -35,6 +35,8 @@ import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.lang.Override;
+import java.lang.String;
 
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApplicationStatus;
@@ -703,7 +705,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @since 1.0
      */
     @XWalkAPI
-    public boolean saveState(Bundle outState) {
+    public boolean saveS1938f4747a1fbdc1b76da3a6c9fc995195c6e74ftate(Bundle outState) {
         if (mContent == null) return false;
         mContent.saveState(outState);
         return true;
@@ -1142,7 +1144,6 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
                 takePictureIntent = null;
             }
         }
-
         Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
         contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
         contentSelectionIntent.setType("*/*");
@@ -1162,6 +1163,11 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
                 extraIntents.toArray(new Intent[] { }));
         getActivity().startActivityForResult(chooserIntent, INPUT_FILE_REQUEST_CODE);
         return true;
+    }
+
+    @XWalkAPI
+    public Object getLastHitTestData() {
+        return mContent.getHitTestData().data();
     }
 
     private File createImageFile() {
