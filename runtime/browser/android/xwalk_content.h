@@ -69,6 +69,9 @@ class XWalkContent {
                                  jboolean value,
                                  jstring origin);
 
+  void UpdateLastHitTestResult(JNIEnv* env,
+                                  jobject obj);
+
  private:
   content::WebContents* CreateWebContents(JNIEnv* env, jobject io_thread_client,
                                           jobject delegate);

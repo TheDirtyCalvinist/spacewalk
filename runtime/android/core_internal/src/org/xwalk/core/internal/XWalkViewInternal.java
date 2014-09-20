@@ -974,8 +974,15 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     @XWalkAPI
+    public String[] getLastHitTestData(){
+        return mContent.getHitTestData().data();
+    }
+
+    @XWalkAPI
     public Bitmap getDrawingCache(){
         return mContent.getDrawingCache();
     }
+
+
 
 }
