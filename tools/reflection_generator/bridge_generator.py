@@ -85,21 +85,8 @@ ${REFLECTION_INIT_SECTION}}
              'BRIDGE_CLASS_NAME': self._java_data.bridge_name}
     return constructor_template.substitute(value)
 
-  def GenerateBridgeDefaultConstructor(self):
-    template = Template("""\
-    public ${NAME}(Object wrapper) {
-        this.wrapper = wrapper;
-        reflectionInit();
-    }
-
-""")
-    value = {'NAME': self._java_data.bridge_name}
-    return template.substitute(value)
-
   def GenerateMethods(self):
     methods_string = ''
-    if self._java_data.need_default_constructor:
-      methods_string += self.GenerateBridgeDefaultConstructor()
     for method in self._java_data.methods:
       methods_string += method.GenerateMethodsStringForBridge()
     return methods_string
@@ -113,14 +100,15 @@ ${REFLECTION_INIT_SECTION}}
     if self._java_data.HasCreateInternallyAnnotation():
       ref_init_templete = Template("""
         ReflectConstructor constructor = new ReflectConstructor(
-                coreBridge.getWrapperClass("${WRAPPER_NAME}"), Object.class);
+                coreBridge, coreBridge.getWrapperClass("${WRAPPER_NAME}"), \
+Object.class);
         this.wrapper = constructor.newInstance(this);
 """)
       value = {'WRAPPER_NAME': self._java_data.GetWrapperName()}
       ref_init_string += ref_init_templete.substitute(value)
 
     ref_enum_template = Template("""\
-        ${METHOD}.init(null,
+        ${METHOD}.init(coreBridge, null,
                 coreBridge.getWrapperClass("${ENUM}"), "valueOf", String.class);
 """)
 
@@ -131,7 +119,7 @@ ${REFLECTION_INIT_SECTION}}
       ref_methods_string += ref_enum_template.substitute(value)
 
     ref_method_template = Template("""\
-        ${METHOD_DECLARE_NAME}.init(wrapper, null,
+        ${METHOD_DECLARE_NAME}.init(coreBridge, wrapper, null,
                 "${METHOD}"${PARAMS});
 """)
 

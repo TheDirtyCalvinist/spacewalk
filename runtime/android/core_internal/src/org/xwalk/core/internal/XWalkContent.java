@@ -74,6 +74,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private NavigationController mNavigationController;
     private WebContents mWebContents;
     private boolean mIsLoaded = false;
+    private XWalkHitTestDataInternal mPossiblyStaleHitTestData = new XWalkHitTestDataInternal();
 
     long mNativeContent;
     long mNativeWebContents;
@@ -826,6 +827,23 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     }
 
     private native long nativeInit();
+
+    @CalledByNative
+    public void updateHitTestData(int type, String extra, String href, String anchorText, String imgSrc) {
+        mPossiblyStaleHitTestData.hitTestResultType = type;
+        mPossiblyStaleHitTestData.hitTestResultExtraData = extra;
+        mPossiblyStaleHitTestData.href = href;
+        mPossiblyStaleHitTestData.anchorText = anchorText;
+        mPossiblyStaleHitTestData.imgSrc = imgSrc;
+    }
+
+    public XWalkHitTestDataInternal getHitTestData(){
+        nativeUpdateLastHitTestResult(mXWalkContent);
+        return mPossiblyStaleHitTestData;
+    }
+
+    private native long nativeInit(XWalkWebContentsDelegate webViewContentsDelegate,
+            XWalkContentsClientBridge bridge);
     private static native void nativeDestroy(long nativeXWalkContent);
     private native WebContents nativeGetWebContents(long nativeXWalkContent);
     private native long nativeReleasePopupXWalkContent(long nativeXWalkContent);
@@ -847,4 +865,5 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private native byte[] nativeGetState(long nativeXWalkContent);
     private native boolean nativeSetState(long nativeXWalkContent, byte[] state);
     private native void nativeSetBackgroundColor(long nativeXWalkContent, int color);
+    private native void nativeUpdateLastHitTestResult(long nativeXWalkContent);
 }

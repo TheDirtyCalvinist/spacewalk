@@ -1166,6 +1166,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     @XWalkAPI
+<<<<<<< HEAD
     public Object getLastHitTestData() {
         return mContent.getHitTestData().data();
     }
@@ -1207,4 +1208,14 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     public ContentViewCore getXWalkContentForTest() {
         return mContent.getContentViewCoreForTest();
     }
+
+    public String[] getLastHitTestData(){
+        return mContent.getHitTestData().data();
+    }
+
+    @XWalkAPI
+    public Bitmap getDrawingCache(){
+        return mContent.getDrawingCache();
+    }
+
 }
