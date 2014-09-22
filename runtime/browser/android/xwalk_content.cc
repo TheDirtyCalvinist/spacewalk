@@ -421,9 +421,19 @@ bool RegisterXWalkContent(JNIEnv* env) {
 }
 
 // Called by Java.
+void XWalkContent::RequestNewHitTestDataAt(JNIEnv* env,
+                                             jobject obj,
+                                             jint x,
+                                             jint y){
+  render_view_host_ext_->RequestNewHitTestDataAt(x, y);
+  UpdateLastHitTestResult(env, obj);
+}
+
+// Called by Java.
 void XWalkContent::UpdateLastHitTestResult(JNIEnv* env,
                                              jobject obj) {
   XWalkHitTestData data = render_view_host_ext_->GetLastHitTestData();
+
 // Make sure to null the Java object if data is empty/invalid.
   ScopedJavaLocalRef<jstring> extra_data_for_type;
   if (data.extra_data_for_type.length())
