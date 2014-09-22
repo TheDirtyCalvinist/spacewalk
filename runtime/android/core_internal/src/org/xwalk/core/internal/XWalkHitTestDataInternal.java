@@ -1,6 +1,8 @@
 package org.xwalk.core.internal;
 
 import java.lang.String;
+import java.util.HashMap;
+import java.util.Map;
 
 @XWalkAPI(createInternally = true, createExternally = true)
 public class XWalkHitTestDataInternal {
@@ -13,7 +15,17 @@ public class XWalkHitTestDataInternal {
     public String anchorText;
     public String imgSrc;
 
-    public String[] data(){
-        return new String[]{String.valueOf(hitTestResultType), hitTestResultExtraData, href, anchorText, imgSrc};
+    public Map data(){
+        HashMap<String, String> data = new HashMap<String, String>(5);
+        data.put("hitTestResultType", String.valueOf(hitTestResultType));
+        data.put("hitTestResultExtraData", hitTestResultExtraData);
+        data.put("href", href);
+        data.put("anchorText", anchorText);
+        data.put("imgSrc", imgSrc);
+        return data;
+    }
+
+    public String toString(){
+        return data().toString();
     }
 }

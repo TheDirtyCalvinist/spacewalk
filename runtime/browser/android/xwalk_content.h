@@ -70,7 +70,12 @@ class XWalkContent {
                                  jstring origin);
 
   void UpdateLastHitTestResult(JNIEnv* env,
-                                  jobject obj);
+                                jobject obj);
+
+  void RequestNewHitTestDataAt(JNIEnv* env,
+                                 jobject obj,
+                                 jint x,
+                                 jint y);
 
  private:
   content::WebContents* CreateWebContents(JNIEnv* env, jobject io_thread_client,

@@ -17,7 +17,9 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Looper;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
@@ -155,6 +157,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     private Context mContext;
     private boolean mIsHidden;
     private XWalkActivityStateListener mActivityStateListener;
+    private static final String TAG = XWalkViewInternal.class.getSimpleName();
 
     /**
      * Normal reload mode as default.
@@ -985,6 +988,10 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         return mContent.getDrawingCache();
     }
 
-
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        Log.d(TAG, "Touch Event occurred");
+        return mContent.onTouchEvent(event);
+    }
 
 }

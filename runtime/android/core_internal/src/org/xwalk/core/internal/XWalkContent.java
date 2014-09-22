@@ -14,6 +14,7 @@ import android.graphics.Bitmap;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
+import android.view.MotionEvent;
 import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
@@ -27,6 +28,7 @@ import android.widget.FrameLayout;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.Runnable;
 import java.lang.annotation.Annotation;
 
 import org.chromium.base.CalledByNative;
@@ -68,6 +70,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private XWalkGeolocationPermissions mGeolocationPermissions;
     private XWalkLaunchScreenManager mLaunchScreenManager;
     private XWalkHitTestDataInternal mPossiblyStaleHitTestData = new XWalkHitTestDataInternal();
+    private double mDIPScale;
 
     long mXWalkContent;
     long mWebContents;
@@ -147,7 +150,8 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mContentsClientBridge.installWebContentsObserver(mContentViewCore.getWebContents());
 
         // Set DIP scale.
-        mContentsClientBridge.setDIPScale(DeviceDisplayInfo.create(context).getDIPScale());
+        mDIPScale = DeviceDisplayInfo.create(context).getDIPScale();
+        mContentsClientBridge.setDIPScale(mDIPScale);
 
         mContentViewCore.setDownloadDelegate(mContentsClientBridge);
 
@@ -165,6 +169,12 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
 
         MediaPlayerBridge.setResourceLoadingFilter(
                 new XWalkMediaPlayerResourceLoadingFilter());
+
+        mContentViewCore.setOnEventRunnable(new Runnable(){
+            public void run(){
+                getHitTestData();
+            }
+        });
 
         XWalkPreferencesInternal.load(this);
     }
@@ -653,6 +663,20 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     }
 
     @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            int actionIndex = event.getActionIndex();
+            // Note this will trigger IPC back to browser even if nothing is
+            // hit.
+            Log.d(TAG, "Requesting new hit test at " + event.getX(actionIndex) + " " + event.getY(actionIndex));
+            nativeRequestNewHitTestDataAt(mXWalkContent,
+                    (int) Math.round(event.getX(actionIndex) / mDIPScale),
+                    (int) Math.round(event.getY(actionIndex) / mDIPScale));
+        }
+        return mContentView.onTouchEvent(event);
+    }
+
+    @Override
     public void onKeyValueChanged(String key, XWalkPreferencesInternal.PreferenceValue value) {
         if (key == null) return;
         if (key.equals(XWalkPreferencesInternal.REMOTE_DEBUGGING)) {
@@ -702,9 +726,13 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mPossiblyStaleHitTestData.href = href;
         mPossiblyStaleHitTestData.anchorText = anchorText;
         mPossiblyStaleHitTestData.imgSrc = imgSrc;
+        Log.d(TAG, "Hit Test Data " + mPossiblyStaleHitTestData);
     }
 
     public XWalkHitTestDataInternal getHitTestData(){
+        nativeRequestNewHitTestDataAt(mXWalkContent,
+                (int) Math.round(mContentViewCore.getLastDownX() / mDIPScale),
+                (int) Math.round(mContentViewCore.getLastDownY() / mDIPScale));
         nativeUpdateLastHitTestResult(mXWalkContent);
         return mPossiblyStaleHitTestData;
     }
@@ -726,4 +754,5 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private native byte[] nativeGetState(long nativeXWalkContent);
     private native boolean nativeSetState(long nativeXWalkContent, byte[] state);
     private native void nativeUpdateLastHitTestResult(long nativeXWalkContent);
+    private native void nativeRequestNewHitTestDataAt(long nativeXWalkContent, int x, int y);
 }

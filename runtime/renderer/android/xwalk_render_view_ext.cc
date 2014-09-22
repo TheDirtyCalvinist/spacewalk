@@ -229,6 +229,7 @@ void XWalkRenderViewExt::OnDoHitTest(int view_x, int view_y) {
   XWalkHitTestData data;
 
   if (!result.urlElement().isNull()) {
+    LOG(WARNING) << "Filling in data ";
     data.anchor_text = result.urlElement().innerText();
     data.href = GetHref(result.urlElement());
   }
