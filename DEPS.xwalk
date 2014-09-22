@@ -33,11 +33,11 @@ ozone_wayland_git = 'https://github.com/01org'
 
 solutions = [
   { 'name': 'src',
-    'url': spacewalk_git + '/chromium-spacewalk.git@spacewalk',
+    'url': spacewalk_git + '/chromium-spacewalk.git@',
     'deps_file': '.DEPS.git',
     'custom_deps': {
       'src':
-        crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+        spacewalk_git + '/chromium-spacewalk.git@',
       'src/third_party/WebKit':
         crosswalk_git + '/blink-crosswalk.git@' + blink_crosswalk_rev,
       'src/v8':
