@@ -23,6 +23,7 @@ v8_crosswalk_rev = '452135ceb9d31a6bc30fb39bf743623e0f553afa'
 ozone_wayland_rev = '9595d59e35e37675587523590e21397addf78446'
 
 crosswalk_git = 'https://github.com/crosswalk-project'
+spacewalk_git = 'https://github.com/Sencha'
 ozone_wayland_git = 'https://github.com/01org'
 
 # ------------------------------------------------------
@@ -32,7 +33,7 @@ ozone_wayland_git = 'https://github.com/01org'
 
 solutions = [
   { 'name': 'src',
-    'url': crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+    'url': spacewalk_git + '/chromium-spacewalk.git@spacewalk',
     'deps_file': '.DEPS.git',
     'custom_deps': {
       'src':
