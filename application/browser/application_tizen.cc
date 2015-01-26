@@ -1,4 +1,5 @@
 // Copyright (c) 2013 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,9 +11,11 @@
 
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/render_process_host.h"
-#include "content/browser/screen_orientation/screen_orientation_dispatcher_host.h"
-#include "content/browser/screen_orientation/screen_orientation_provider.h"
+#include "content/public/browser/screen_orientation_dispatcher_host.h"
+#include "content/public/browser/screen_orientation_provider.h"
 
+#include "xwalk/runtime/browser/runtime_context.h"
+#include "xwalk/runtime/browser/runtime_url_request_context_getter.h"
 #include "xwalk/runtime/browser/ui/native_app_window.h"
 #include "xwalk/runtime/browser/ui/native_app_window_tizen.h"
 #include "xwalk/runtime/common/xwalk_common_messages.h"
@@ -23,10 +26,10 @@
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/keyboard_codes_posix.h"
 #include "ui/events/platform/platform_event_source.h"
-#include "xwalk/application/common/manifest_handlers/tizen_setting_handler.h"
 #endif
 
 #include "xwalk/application/common/application_manifest_constants.h"
+#include "xwalk/application/common/manifest_handlers/tizen_setting_handler.h"
 #include "xwalk/application/common/manifest_handlers/tizen_splash_screen_handler.h"
 
 namespace xwalk {
@@ -101,6 +104,8 @@ ApplicationTizen::ApplicationTizen(
 #if defined(USE_OZONE)
   ui::PlatformEventSource::GetInstance()->AddPlatformEventObserver(this);
 #endif
+  cookie_manager_ = scoped_ptr<CookieManager>(
+      new CookieManager(id(), runtime_context_));
 }
 
 ApplicationTizen::~ApplicationTizen() {
@@ -115,6 +120,14 @@ void ApplicationTizen::Hide() {
   for (; it != runtimes_.end(); ++it) {
     if ((*it)->window())
       (*it)->window()->Minimize();
+  }
+}
+
+void ApplicationTizen::Show() {
+  DCHECK(!runtimes_.empty());
+  for (Runtime* runtime : runtimes_) {
+    if (auto window = runtime->window())
+      window->Restore();
   }
 }
 
@@ -203,6 +216,15 @@ void ApplicationTizen::DidProcessEvent(
   }
 }
 #endif
+
+void ApplicationTizen::RemoveAllCookies() {
+  cookie_manager_->RemoveAllCookies();
+}
+
+void ApplicationTizen::SetUserAgentString(
+    const std::string& user_agent_string) {
+  cookie_manager_->SetUserAgentString(render_process_host_, user_agent_string);
+}
 
 }  // namespace application
 }  // namespace xwalk

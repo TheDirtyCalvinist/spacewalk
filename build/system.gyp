@@ -56,12 +56,16 @@
           'type': 'none',
           'variables': {
             'packages': [
+              'libtzplatform-config',
               'ail',
               'dlog',
+              'nss',
+              'nspr',
               'pkgmgr-parser',
               'pkgmgr-info',
               'pkgmgr-installer',
               'pkgmgr',
+              'secure-storage',
               'vconf',
             ],
           },

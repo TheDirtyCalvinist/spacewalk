@@ -90,10 +90,11 @@ Application::Application(
       security_mode_enabled_(false),
       runtime_context_(runtime_context),
       observer_(NULL),
+      window_show_state_(ui::SHOW_STATE_DEFAULT),
       remote_debugging_enabled_(false),
       weak_factory_(this) {
   DCHECK(runtime_context_);
-  DCHECK(data_);
+  DCHECK(data_.get());
 }
 
 Application::~Application() {
@@ -107,8 +108,11 @@ GURL Application::GetStartURL<Manifest::TYPE_WIDGET>() {
 #if defined(OS_TIZEN)
   if (data_->IsHostedApp()) {
     std::string source;
-    data_->GetManifest()->GetString(widget_keys::kLaunchLocalPathKey, &source);
-    GURL url = GURL(source);
+    GURL url;
+    if (data_->GetManifest()->GetString(
+        widget_keys::kLaunchLocalPathKey, &source)) {
+      url = GURL(source);
+    }
 
     if (url.is_valid() && url.SchemeIsHTTPOrHTTPS())
       return url;
@@ -133,9 +137,10 @@ template<>
 GURL Application::GetStartURL<Manifest::TYPE_MANIFEST>() {
   if (data_->IsHostedApp()) {
     std::string source;
-    data_->GetManifest()->GetString(keys::kStartURLKey, &source);
     // Not trying to get a relative path for the "fake" application.
-    return GURL(source);
+    if (data_->GetManifest()->GetString(keys::kStartURLKey, &source))
+      return GURL(source);
+    return GURL();
   }
 
   GURL url = GetAbsoluteURLFromKey(keys::kStartURLKey);
@@ -229,6 +234,7 @@ bool Application::Launch(const LaunchParams& launch_params) {
   params.state = is_wgt ?
       GetWindowShowState<Manifest::TYPE_WIDGET>(launch_params):
       GetWindowShowState<Manifest::TYPE_MANIFEST>(launch_params);
+  window_show_state_ = params.state;
 
   params.splash_screen_path = GetSplashScreenPath();
 

@@ -6,7 +6,6 @@
 #define XWALK_APPLICATION_COMMON_PACKAGE_PACKAGE_H_
 
 #include <string>
-#include <vector>
 
 #include "base/files/file_path.h"
 #include "base/files/scoped_file.h"
@@ -38,7 +37,7 @@ class Package {
   virtual bool ExtractTo(const base::FilePath& target_path);
 
  protected:
-  explicit Package(const base::FilePath& source_path);
+  Package(const base::FilePath& source_path, Manifest::Type manifest_type);
   // Unzipping of the zipped file happens in a temporary directory
   bool CreateTempDirectory();
   scoped_ptr<base::ScopedFILE> file_;

@@ -15,7 +15,7 @@ import java.util.List;
 
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
-import org.chromium.content.browser.LoadUrlParams;
+import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content.browser.test.util.CallbackHelper;
 import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnPageStartedHelper;
 import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnReceivedErrorHelper;
@@ -38,7 +38,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
     protected void setUp() throws Exception {
         super.setUp();
         mShouldOverrideUrlLoadingHelper = mTestHelperBridge.getShouldOverrideUrlLoadingHelper();
-        mWebServer = new TestWebServer(false);
+        mWebServer = TestWebServer.start();
     }
 
     @Override

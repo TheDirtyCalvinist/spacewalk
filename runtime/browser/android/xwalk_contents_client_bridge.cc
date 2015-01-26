@@ -60,11 +60,15 @@ ScopedPtrHashMap<int, content::DesktopNotificationDelegate> g_notification_map_;
 }  // namespace
 
 
-XWalkContentsClientBridge::XWalkContentsClientBridge(JNIEnv* env, jobject obj)
-    : java_ref_(env, obj) {
+XWalkContentsClientBridge::XWalkContentsClientBridge(
+    JNIEnv* env, jobject obj,
+    content::WebContents* web_contents)
+    : java_ref_(env, obj),
+      icon_helper_(new XWalkIconHelper(web_contents)) {
   DCHECK(obj);
   Java_XWalkContentsClientBridge_setNativeContentsClientBridge(
       env, obj, reinterpret_cast<intptr_t>(this));
+  icon_helper_->SetListener(this);
 }
 
 XWalkContentsClientBridge::~XWalkContentsClientBridge() {
@@ -94,7 +98,9 @@ void XWalkContentsClientBridge::AllowCertificateError(
     return;
 
   std::string der_string;
-  net::X509Certificate::GetDEREncoded(cert->os_cert_handle(), &der_string);
+  if (!net::X509Certificate::GetDEREncoded(cert->os_cert_handle(),
+      &der_string))
+    return;
   ScopedJavaLocalRef<jbyteArray> jcert = base::android::ToJavaByteArray(
       env,
       reinterpret_cast<const uint8*>(der_string.data()),
@@ -433,8 +439,40 @@ void XWalkContentsClientBridge::OnFilesNotSelected(
       files, static_cast<content::FileChooserParams::Mode>(mode));
 }
 
+void XWalkContentsClientBridge::DownloadIcon(JNIEnv* env,
+                                             jobject obj,
+                                             jstring url) {
+  std::string url_str = base::android::ConvertJavaStringToUTF8(env, url);
+  icon_helper_->DownloadIcon(GURL(url_str));
+}
+
+void XWalkContentsClientBridge::OnIconAvailable(const GURL& icon_url) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  JNIEnv* env = AttachCurrentThread();
+  ScopedJavaLocalRef<jobject> obj = java_ref_.get(env);
+
+  ScopedJavaLocalRef<jstring> jurl(
+      ConvertUTF8ToJavaString(env, icon_url.spec()));
+
+  Java_XWalkContentsClientBridge_onIconAvailable(env, obj.obj(), jurl.obj());
+}
+
+void XWalkContentsClientBridge::OnReceivedIcon(const GURL& icon_url,
+                                               const SkBitmap& bitmap) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  JNIEnv* env = AttachCurrentThread();
+  ScopedJavaLocalRef<jobject> obj = java_ref_.get(env);
+
+  ScopedJavaLocalRef<jstring> jurl(
+      ConvertUTF8ToJavaString(env, icon_url.spec()));
+  ScopedJavaLocalRef<jobject> jicon = gfx::ConvertToJavaBitmap(&bitmap);
+
+  Java_XWalkContentsClientBridge_onReceivedIcon(
+      env, obj.obj(), jurl.obj(), jicon.obj());
+}
+
 bool RegisterXWalkContentsClientBridge(JNIEnv* env) {
-  return RegisterNativesImpl(env) >= 0;
+  return RegisterNativesImpl(env);
 }
 
 }  // namespace xwalk

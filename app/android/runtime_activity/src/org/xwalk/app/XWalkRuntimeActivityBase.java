@@ -6,11 +6,9 @@ package org.xwalk.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -20,9 +18,10 @@ import org.xwalk.app.runtime.extension.XWalkRuntimeExtensionManager;
 import org.xwalk.app.runtime.XWalkRuntimeView;
 import org.xwalk.core.SharedXWalkExceptionHandler;
 import org.xwalk.core.SharedXWalkView;
+import org.xwalk.core.XWalkActivity;
 import org.xwalk.core.XWalkPreferences;
 
-public abstract class XWalkRuntimeActivityBase extends Activity {
+public abstract class XWalkRuntimeActivityBase extends XWalkActivity {
 
     private static final String DEFAULT_LIBRARY_APK_URL = null;
 
@@ -31,8 +30,6 @@ public abstract class XWalkRuntimeActivityBase extends Activity {
     private XWalkRuntimeView mRuntimeView;
 
     private boolean mShownNotFoundDialog = false;
-
-    private BroadcastReceiver mReceiver;
 
     private boolean mRemoteDebugging = false;
 
@@ -44,27 +41,6 @@ public abstract class XWalkRuntimeActivityBase extends Activity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        IntentFilter intentFilter = new IntentFilter("org.xwalk.intent");
-        intentFilter.addAction("android.intent.action.EXTERNAL_APPLICATIONS_AVAILABLE");
-        intentFilter.addAction("android.intent.action.EXTERNAL_APPLICATIONS_UNAVAILABLE");
-        mReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                Bundle bundle = intent.getExtras();
-                if (bundle == null)
-                    return;
-
-                if (bundle.containsKey("remotedebugging")) {
-                    String extra = bundle.getString("remotedebugging");
-                    if (extra.equals("true")) {
-                        XWalkPreferences.setValue(XWalkPreferences.REMOTE_DEBUGGING, true);
-                    } else if (extra.equals("false")) {
-                        XWalkPreferences.setValue(XWalkPreferences.REMOTE_DEBUGGING, false);
-                    }
-                }
-            }
-        };
-        registerReceiver(mReceiver, intentFilter);
         super.onCreate(savedInstanceState);
         tryLoadRuntimeView();
         if (mRuntimeView != null) mRuntimeView.onCreate();
@@ -98,7 +74,6 @@ public abstract class XWalkRuntimeActivityBase extends Activity {
 
     @Override
     public void onDestroy() {
-        unregisterReceiver(mReceiver);
         if (mExtensionManager != null) mExtensionManager.onDestroy();
         super.onDestroy();
     }
@@ -179,8 +154,9 @@ public abstract class XWalkRuntimeActivityBase extends Activity {
 
     private void showRuntimeLibraryExceptionDialog(String title, String message) {
         if (!mShownNotFoundDialog) {
+            if (SharedXWalkView.isUsingLibrary()) return;
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            if (!SharedXWalkView.usesLibraryOutOfPackage()) {
+            if (SharedXWalkView.containsLibrary()) {
                 builder.setPositiveButton(android.R.string.ok,
                         new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int id) {

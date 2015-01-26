@@ -122,13 +122,13 @@
         ['OS=="linux"', {
           'dependencies': [
             'application/tools/linux/xwalk_application_tools.gyp:xwalk_launcher',
+            'application/tools/linux/xwalk_application_tools.gyp:xwalkctl',
           ],
         }],
         ['tizen == 1', {
           'dependencies': [
-            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalkctl',
-            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk-pkg-helper',
-            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk-backendlib',
+            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk_backend',
+            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk_backend_lib',
           ],
         }],
       ],

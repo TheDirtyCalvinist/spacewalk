@@ -20,7 +20,7 @@
 namespace {
 
 ail_cb_ret_e appinfo_get_app_id_cb(
-    const ail_appinfo_h appinfo, void* user_data) {
+    const ail_appinfo_h appinfo, void* user_data, uid_t /*uid*/) {
   std::vector<std::string>* app_ids =
     static_cast<std::vector<std::string>*>(user_data);
   char* app_id;
@@ -96,7 +96,7 @@ scoped_refptr<ApplicationData> ApplicationStorageImpl::GetApplicationData(
   scoped_refptr<ApplicationData> app_data =
      LoadApplication(
          app_path, app_id, ApplicationData::INTERNAL, manifest_type, &error);
-  if (!app_data)
+  if (!app_data.get())
     LOG(ERROR) << "Error occurred while trying to load application: " << error;
 
   return app_data;

@@ -13,7 +13,6 @@ import re
 import shutil
 import stat
 import sys
-import tempfile
 
 # get xwalk absolute path so we can run this script from any location
 xwalk_dir = os.path.dirname(os.path.abspath(__file__))
@@ -25,11 +24,14 @@ from handle_xml import AddElementAttribute
 from handle_xml import AddElementAttributeAndText
 from handle_xml import EditElementAttribute
 from handle_xml import EditElementValueByNodeName
+from handle_xml import MergeNodes
 from handle_permissions import HandlePermissions
-from util import CleanDir, CreateAndCopyDir
+from util import CleanDir, CreateAndCopyDir, GetBuildDir
 from xml.dom import minidom
 
+
 TEMPLATE_DIR_NAME = 'template'
+
 
 def VerifyPackageName(value):
   regex = r'^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
@@ -66,7 +68,7 @@ def ReplaceInvalidChars(value, mode='default'):
     invalid_chars = '\/:.*?"<>|- '
   for c in invalid_chars:
     if mode == 'apkname' and c in value:
-      print("Illegal character: '%s' is replaced with '_'" % c)
+      print('Illegal character: "%s" replaced with "_"' % c)
     value = value.replace(c, '_')
   return value
 
@@ -119,13 +121,17 @@ def Prepare(app_info, compressor):
   """
   # create new app_dir in temp dir
   app_name = app_info.android_name
-  app_dir = os.path.join(tempfile.gettempdir(), app_name)
+  app_dir = GetBuildDir(app_name)
   app_package = app_info.package
   app_root = app_info.app_root
   template_app_dir = os.path.join(xwalk_dir, TEMPLATE_DIR_NAME)
 
   # 1) copy template project to app_dir
   CleanDir(app_dir)
+  if not os.path.isdir(template_app_dir):
+    print('Error: The template directory could not be found (%s).' %
+          template_app_dir)
+    sys.exit(7)
   shutil.copytree(template_app_dir, app_dir)
 
   # 2) replace app_dir 'src' dir with template 'src' dir
@@ -168,7 +174,7 @@ def EncodingUnicodeValue(value):
 
 
 def CustomizeStringXML(name, description):
-  strings_path = os.path.join(tempfile.gettempdir(), name, 'res', 'values',
+  strings_path = os.path.join(GetBuildDir(name), 'res', 'values',
                               'strings.xml')
   if not os.path.isfile(strings_path):
     print ('Please make sure strings_xml'
@@ -186,8 +192,7 @@ def CustomizeStringXML(name, description):
 
 
 def CustomizeThemeXML(name, fullscreen, manifest):
-  theme_path = os.path.join(tempfile.gettempdir(), name, 'res', 'values-v14',
-                            'theme.xml')
+  theme_path = os.path.join(GetBuildDir(name), 'res', 'values-v14', 'theme.xml')
   if not os.path.isfile(theme_path):
     print('Error: theme.xml is missing in the build tool.')
     sys.exit(6)
@@ -213,7 +218,7 @@ def CustomizeXML(app_info, description, icon_dict, manifest, permissions):
   orientation = app_info.orientation
   package = app_info.package
   app_name = app_info.app_name
-  app_dir = os.path.join(tempfile.gettempdir(), name)
+  app_dir = GetBuildDir(name)
   # Chinese character with unicode get from 'manifest.json' will cause
   # 'UnicodeEncodeError' when finally wrote to 'AndroidManifest.xml'.
   app_name = EncodingUnicodeValue(app_name)
@@ -271,7 +276,7 @@ def ReplaceString(file_path, src, dest):
 
 def SetVariable(file_path, string_line, variable, value):
   function_string = ('%sset%s(%s);\n' %
-                    ('        ', variable, value))
+                     ('        ', variable, value))
   temp_file_path = file_path + '.backup'
   file_handle = open(temp_file_path, 'w+')
   for line in open(file_path):
@@ -285,7 +290,7 @@ def SetVariable(file_path, string_line, variable, value):
 def CustomizeJava(app_info, app_url, app_local_path, keep_screen_on):
   name = app_info.android_name
   package = app_info.package
-  app_dir = os.path.join(tempfile.gettempdir(), name)
+  app_dir = GetBuildDir(name)
   app_pkg_dir = os.path.join(app_dir, 'src', package.replace('.', os.path.sep))
   dest_activity = os.path.join(app_pkg_dir, name + 'Activity.java')
   ReplaceString(dest_activity, 'org.xwalk.app.template', package)
@@ -335,7 +340,7 @@ def CopyExtensionFile(extension_name, suffix, src_path, dest_path):
   dest_extension_path = os.path.join(dest_path, extension_name)
   if os.path.exists(dest_extension_path):
     # TODO: Refine it by renaming it internally.
-    print('Error: duplicated extension names "%s" are found. Please rename it.'
+    print('Error: duplicate extension names were found (%s). Please rename it.'
           % extension_name)
     sys.exit(9)
   else:
@@ -370,7 +375,7 @@ def CustomizeExtensions(app_info, extensions):
   if not extensions:
     return
   name = app_info.android_name
-  app_dir = os.path.join(tempfile.gettempdir(), name)
+  app_dir = GetBuildDir(name)
   apk_assets_path = os.path.join(app_dir, 'assets')
   extensions_string = 'xwalk-extensions'
 
@@ -387,7 +392,7 @@ def CustomizeExtensions(app_info, extensions):
   extension_json_list = []
   for source_path in extension_paths:
     if not os.path.exists(source_path):
-      print('Error: can\'t find the extension directory \'%s\'.' % source_path)
+      print('Error: can not find the extension directory \'%s\'.' % source_path)
       sys.exit(9)
     # Remove redundant separators to avoid empty basename.
     source_path = os.path.normpath(source_path)
@@ -403,7 +408,7 @@ def CustomizeExtensions(app_info, extensions):
     file_name = extension_name + '.json'
     src_file = os.path.join(source_path, file_name)
     if not os.path.isfile(src_file):
-      print('Error: %s is not found in %s.' % (file_name, source_path))
+      print('Error: %s was not found in %s.' % (file_name, source_path))
       sys.exit(9)
     else:
       src_file_handle = open(src_file)
@@ -443,6 +448,25 @@ def CustomizeExtensions(app_info, extensions):
         file_handle = open(manifest_path, 'w')
         xmldoc.writexml(file_handle, encoding='utf-8')
         file_handle.close()
+      if 'manifest' in json_output:
+        manifest_merge_path = os.path.join(source_path, json_output['manifest'])
+        if not os.path.isfile(manifest_merge_path):
+          print('Error: %s specified in the extension\'s JSON '
+                'could not be found.' % manifest_merge_path)
+          sys.exit(9)
+        xmldoc_merge = minidom.parse(manifest_merge_path)
+        manifest_nodes = xmldoc.getElementsByTagName('manifest')
+        manifest_nodes_merge = xmldoc_merge.getElementsByTagName('manifest')
+        if not manifest_nodes:
+          print('Error: %s does not have a <manifest> node.' % manifest_path)
+          sys.exit(9)
+        if not manifest_nodes_merge:
+          print('Error: %s does not have a <manifest> node.'
+                % manifest_merge_path)
+          sys.exit(9)
+        MergeNodes(manifest_nodes[0], manifest_nodes_merge[0])
+        with open(manifest_path, 'w') as file_handle:
+          xmldoc.writexml(file_handle, encoding='utf-8')
 
   # Write configuration of extensions into the target extensions-config.json.
   if extension_json_list:
@@ -455,15 +479,14 @@ def CustomizeExtensions(app_info, extensions):
 def GenerateCommandLineFile(app_info, xwalk_command_line):
   if xwalk_command_line == '':
     return
-  assets_path = os.path.join(tempfile.gettempdir(), app_info.android_name,
-                             'assets')
+  assets_path = os.path.join(GetBuildDir(app_info.android_name), 'assets')
   file_path = os.path.join(assets_path, 'xwalk-command-line')
   command_line_file = open(file_path, 'w')
   command_line_file.write('xwalk ' + xwalk_command_line)
 
 
 def CustomizeIconByDict(name, app_root, icon_dict):
-  app_dir = os.path.join(tempfile.gettempdir(), name)
+  app_dir = GetBuildDir(name)
   icon_name = None
   drawable_dict = {'ldpi': [1, 37], 'mdpi': [37, 72], 'hdpi': [72, 96],
                    'xhdpi': [96, 120], 'xxhdpi': [120, 144],
@@ -500,7 +523,7 @@ def CustomizeIconByDict(name, app_root, icon_dict):
 
 def CustomizeIconByOption(name, icon):
   if os.path.isfile(icon):
-    drawable_path = os.path.join(tempfile.gettempdir(), name, 'res', 'drawable')
+    drawable_path = os.path.join(GetBuildDir(name), 'res', 'drawable')
     if not os.path.exists(drawable_path):
       os.makedirs(drawable_path)
     icon_file = os.path.basename(icon)
@@ -634,7 +657,7 @@ def main():
 
     # build project is now in /tmp/<name>. Copy to project_dir
     if options.project_dir:
-      src_dir = os.path.join(tempfile.gettempdir(), app_info.android_name)
+      src_dir = GetBuildDir(app_info.android_name)
       dest_dir = os.path.join(options.project_dir, app_info.android_name)
       CreateAndCopyDir(src_dir, dest_dir, True)
 
@@ -642,7 +665,7 @@ def main():
     print('Exiting with error code: %d' % ec.code)
     return ec.code
   finally:
-    CleanDir(os.path.join(tempfile.gettempdir(), app_info.android_name))
+    CleanDir(GetBuildDir(app_info.android_name))
   return 0
 
 

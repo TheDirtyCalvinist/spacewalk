@@ -15,19 +15,18 @@ public class SharedXWalkView extends XWalkView {
 
     private static boolean initialized = false;
 
-    public SharedXWalkView(Context context, AttributeSet attrs,
+    public SharedXWalkView(XWalkActivity context, AttributeSet attrs,
             SharedXWalkExceptionHandler handler) {
         super(verifyActivity(context), attrs);
     }
 
-    public SharedXWalkView(Context context, Activity activity) {
+    public SharedXWalkView(Context context, XWalkActivity activity) {
         super(context, verifyActivity(activity));
     }
 
-    private static Activity verifyActivity(Context context) {
-        assert context instanceof Activity;
+    private static Activity verifyActivity(XWalkActivity context) {
         if (!initialized) initialize(context, null);
-        return (Activity) context;
+        return context;
     }
 
     public static void initialize(Context context, SharedXWalkExceptionHandler handler) {
@@ -39,7 +38,11 @@ public class SharedXWalkView extends XWalkView {
         initialized = true;
     }
 
-    public static boolean usesLibraryOutOfPackage() {
-        return ReflectionHelper.shouldUseLibrary();
+    public static boolean containsLibrary() {
+        return !ReflectionHelper.shouldUseLibrary();
+    }
+
+    public static boolean isUsingLibrary() {
+        return ReflectionHelper.isUsingLibrary();
     }
 }

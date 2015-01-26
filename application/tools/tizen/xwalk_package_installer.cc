@@ -1,4 +1,5 @@
 // Copyright (c) 2014 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +7,12 @@
 
 #include <sys/types.h>
 #include <pwd.h>
+#include <ss_manager.h>
 #include <unistd.h>
 #include <pkgmgr/pkgmgr_parser.h>
 
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <string>
 
@@ -17,9 +20,8 @@
 #include "base/files/file_enumerator.h"
 #include "base/logging.h"
 #include "base/path_service.h"
-#include "base/command_line.h"
-#include "base/process/launch.h"
 #include "base/version.h"
+#include "crypto/symmetric_key.h"
 #include "third_party/libxml/chromium/libxml_utils.h"
 #include "xwalk/application/common/application_data.h"
 #include "xwalk/application/common/application_file_util.h"
@@ -27,9 +29,12 @@
 #include "xwalk/application/common/id_util.h"
 #include "xwalk/application/common/manifest_handlers/tizen_application_handler.h"
 #include "xwalk/application/common/manifest_handlers/tizen_metadata_handler.h"
+#include "xwalk/application/common/manifest_handlers/tizen_setting_handler.h"
 #include "xwalk/application/common/permission_policy_manager.h"
 #include "xwalk/application/common/tizen/application_storage.h"
+#include "xwalk/application/common/tizen/encryption.h"
 #include "xwalk/application/tools/tizen/xwalk_packageinfo_constants.h"
+#include "xwalk/application/tools/tizen/xwalk_platform_installer.h"
 #include "xwalk/runtime/common/xwalk_paths.h"
 
 namespace info = application_packageinfo_constants;
@@ -52,8 +57,6 @@ const base::FilePath::CharType kUpdateTempDir[] =
     FILE_PATH_LITERAL("update_temp");
 
 namespace widget_keys = xwalk::application_widget_keys;
-
-const base::FilePath kPkgHelper("/usr/bin/xwalk-pkg-helper");
 
 const base::FilePath kXWalkLauncherBinary("/usr/bin/xwalk-launcher");
 
@@ -117,7 +120,9 @@ bool GeneratePkgInfoXml(xwalk::application::ApplicationData* application,
   xml_writer.StartElement("manifest");
   xml_writer.AddAttribute("xmlns", "http://tizen.org/ns/packages");
   xml_writer.AddAttribute("package", package_id);
-  xml_writer.AddAttribute("type", "wgt");
+  xml_writer.AddAttribute("type",
+      application->GetManifest()->type() == Manifest::TYPE_MANIFEST
+      ? "xpk" : "wgt");
   xml_writer.AddAttribute("version", application->VersionString());
   xml_writer.WriteElement("label", application->Name());
   xml_writer.WriteElement("description", application->Description());
@@ -242,78 +247,29 @@ bool PackageInstaller::PlatformInstall(ApplicationData* app_data) {
   base::FilePath icon =
       icon_name.empty() ? kDefaultIcon : app_dir.AppendASCII(icon_name);
 
-  CommandLine cmdline(kPkgHelper);
-  cmdline.AppendSwitchASCII("--install", app_id);
-  cmdline.AppendSwitchPath("--xml", xml_path);
-  cmdline.AppendSwitchPath("--icon", icon);
-  if (quiet_)
-    cmdline.AppendSwitch("-q");
-  if (!key_.empty()) {
-    cmdline.AppendSwitchASCII("--key", key_);
-  }
-
-  int exit_code;
-  std::string output;
-
-  if (!base::GetAppOutputWithExitCode(cmdline, &output, &exit_code)) {
-    LOG(ERROR) << "Could not launch the installation helper process.";
+  if (xml_path.empty() || icon.empty()) {
+    LOG(ERROR) << "Xml or icon path is empty";
     return false;
   }
 
-  if (exit_code != 0) {
-    LOG(ERROR) << "Could not install application: "
-               << output << " (" << exit_code << ")";
+  PlatformInstaller platform_installer(app_id);
+
+  InitializePkgmgrSignal(&platform_installer, "-i", app_id);
+
+  if (!platform_installer.InstallApplication(xml_path, icon))
     return false;
-  }
 
   app_dir_cleaner.Dismiss();
 
   return true;
 }
 
-bool PackageInstaller::PlatformUninstall(ApplicationData* app_data) {
-  bool result = true;
-  std::string app_id(app_data->ID());
-  base::FilePath data_dir;
-  CHECK(PathService::Get(xwalk::DIR_DATA_PATH, &data_dir));
+bool PackageInstaller::PlatformUninstall(const std::string& app_id) {
+  PlatformInstaller platform_installer(app_id);
 
-  CommandLine cmdline(kPkgHelper);
-  cmdline.AppendSwitchASCII("--uninstall", app_id);
-  if (quiet_)
-    cmdline.AppendSwitch("-q");
-  if (!key_.empty()) {
-    cmdline.AppendSwitchASCII("--key", key_);
-  }
+  InitializePkgmgrSignal(&platform_installer, "-d", app_id);
 
-  int exit_code;
-  std::string output;
-
-  if (!base::GetAppOutputWithExitCode(cmdline, &output, &exit_code)) {
-    LOG(ERROR) << "Could not launch installer helper";
-    result = false;
-  }
-
-  if (exit_code != 0) {
-    LOG(ERROR) << "Could not uninstall application: "
-               << output << " (" << exit_code << ")";
-    result = false;
-  }
-
-  base::FilePath app_dir =
-      data_dir.AppendASCII(info::kAppDir).AppendASCII(app_id);
-  if (!base::DeleteFile(app_dir, true)) {
-    LOG(ERROR) << "Could not remove directory '" << app_dir.value() << "'";
-    result = false;
-  }
-
-  base::FilePath xml_path = data_dir.AppendASCII(
-      app_id + std::string(info::kXmlExtension));
-  if (!base::DeleteFile(xml_path, false)) {
-    LOG(ERROR) << "Could not remove file '" << xml_path.value() << "'";
-    result = false;
-  }
-
-  return result;
+  return platform_installer.UninstallApplication();
 }
 
 bool PackageInstaller::PlatformUpdate(ApplicationData* app_data) {
@@ -347,61 +303,23 @@ bool PackageInstaller::PlatformUpdate(ApplicationData* app_data) {
   base::FilePath icon =
       icon_name.empty() ? kDefaultIcon : app_dir.AppendASCII(icon_name);
 
-  CommandLine cmdline(kPkgHelper);
-  cmdline.AppendSwitchASCII("--update", app_id);
-  cmdline.AppendSwitchPath("--xml", new_xml_path);
-  cmdline.AppendSwitchPath("--icon", icon);
-  if (quiet_)
-    cmdline.AppendSwitch("-q");
-  if (!key_.empty()) {
-    cmdline.AppendSwitchASCII("--key", key_);
-  }
+  PlatformInstaller platform_installer(app_id);
 
-  int exit_code;
-  std::string output;
+  InitializePkgmgrSignal(&platform_installer, "-i", app_id);
 
-  if (!base::GetAppOutputWithExitCode(cmdline, &output, &exit_code)) {
-    LOG(ERROR) << "Could not launch installer helper";
+  if (!platform_installer.UpdateApplication(new_xml_path, icon))
     return false;
-  }
 
-  if (exit_code != 0) {
-    LOG(ERROR) << "Could not update application: "
-               << output << " (" << exit_code << ")";
-    return false;
-  }
-
-  base::FilePath old_xml_path = data_dir.AppendASCII(info::kAppDir).AppendASCII(
-      app_id + std::string(info::kXmlExtension));
-  base::Move(new_xml_path, old_xml_path);
   app_dir_cleaner.Dismiss();
   return true;
 }
 
 bool PackageInstaller::PlatformReinstall(const base::FilePath& path) {
-  CommandLine cmdline(kPkgHelper);
-  cmdline.AppendSwitchPath("--reinstall", path);
-  if (quiet_)
-    cmdline.AppendSwitch("-q");
-  if (!key_.empty()) {
-    cmdline.AppendSwitchASCII("--key", key_);
-  }
+  PlatformInstaller platform_installer;
 
-  int exit_code;
-  std::string output;
+  InitializePkgmgrSignal(&platform_installer, "-r", path.value());
 
-  if (!base::GetAppOutputWithExitCode(cmdline, &output, &exit_code)) {
-    LOG(ERROR) << "Could not launch installer helper";
-    return false;
-  }
-
-  if (exit_code != 0) {
-    LOG(ERROR) << "Could not reinstall application: "
-               << output << " (" << exit_code << ")";
-    return false;
-  }
-
-  return true;
+  return platform_installer.ReinstallApplication();
 }
 
 bool PackageInstaller::Install(const base::FilePath& path, std::string* id) {
@@ -435,7 +353,7 @@ bool PackageInstaller::Install(const base::FilePath& path, std::string* id) {
         !base::CopyFile(path, tmp_path.path()))
       return false;
     package = Package::Create(tmp_path.path());
-    if (!package->IsValid())
+    if (!package || !package->IsValid())
       return false;
     package->ExtractToTemporaryDir(&unpacked_dir);
     app_id = package->Id();
@@ -447,7 +365,7 @@ bool PackageInstaller::Install(const base::FilePath& path, std::string* id) {
   scoped_refptr<ApplicationData> app_data = LoadApplication(
       unpacked_dir, app_id, ApplicationData::LOCAL_DIRECTORY,
       package->manifest_type(), &error);
-  if (!app_data) {
+  if (!app_data.get()) {
     LOG(ERROR) << "Error during application installation: " << error;
     return false;
   }
@@ -456,7 +374,7 @@ bool PackageInstaller::Install(const base::FilePath& path, std::string* id) {
   // inside XWalk.
   xwalk::application::PermissionPolicyManager permission_policy_handler;
   if (!permission_policy_handler.
-      InitApplicationPermission(app_data)) {
+      InitApplicationPermission(app_data.get())) {
     LOG(ERROR) << "Application permission data is invalid";
     return false;
   }
@@ -482,6 +400,55 @@ bool PackageInstaller::Install(const base::FilePath& path, std::string* id) {
       return false;
   }
 
+  xwalk::application::TizenSettingInfo* info =
+      static_cast<xwalk::application::TizenSettingInfo*>(
+          app_data->GetManifestData(widget_keys::kTizenSettingKey));
+  if (info && info->encryption_enabled()) {
+    // Generate encryption key.
+    scoped_ptr<crypto::SymmetricKey> key(
+        crypto::SymmetricKey::GenerateRandomKey(
+            crypto::SymmetricKey::AES, 256));
+
+    std::string str_key;
+    key->GetRawKey(&str_key);
+
+    std::string appId = app_data->ID();
+    std::transform(appId.begin(), appId.end(), appId.begin(), tolower);
+    scoped_ptr<char[], base::FreeDeleter> buffer =
+        scoped_ptr<char[], base::FreeDeleter>(strdup(str_key.c_str()));
+    const char* filename = appId.c_str();
+    int ret = ssm_write_buffer(
+        buffer.get(), str_key.size(),
+        filename,
+        SSM_FLAG_SECRET_OPERATION,
+        filename);
+    // Encrypt the resources if needed.
+    base::FileEnumerator iter(app_dir, true, base::FileEnumerator::FILES);
+    for (base::FilePath file_path = iter.Next();
+         !file_path.empty();
+         file_path = iter.Next()) {
+      if (!ret && xwalk::application::RequiresEncryption(file_path) &&
+          base::PathIsWritable(file_path)) {
+        std::string content;
+        std::string encrypted;
+        if (!base::ReadFileToString(file_path, &content)) {
+          LOG(ERROR) << "Failed to read " << file_path.MaybeAsASCII();
+          return false;
+        }
+        if (!xwalk::application::EncryptData(content.data(),
+                                             content.size(),
+                                             str_key,
+                                             &encrypted)
+            || !base::WriteFile(file_path,
+                                encrypted.data(),
+                                encrypted.size())) {
+          LOG(ERROR) << "Failed to encrypt " << file_path.MaybeAsASCII();
+          return false;
+        }
+      }
+    }
+  }
+
   app_data->set_path(app_dir);
 
   if (!storage_->AddApplication(app_data)) {
@@ -491,7 +458,7 @@ bool PackageInstaller::Install(const base::FilePath& path, std::string* id) {
     return false;
   }
 
-  if (!PlatformInstall(app_data)) {
+  if (!PlatformInstall(app_data.get())) {
     LOG(ERROR) << "Application with id " << app_data->ID()
                << " couldn't be installed due to a platform error";
     storage_->RemoveApplication(app_data->ID());
@@ -500,7 +467,7 @@ bool PackageInstaller::Install(const base::FilePath& path, std::string* id) {
   }
 
   LOG(INFO) << "Installed application with id: " << app_data->ID()
-            << "to" << app_dir.MaybeAsASCII() << " successfully.";
+            << " to " << app_dir.MaybeAsASCII() << " successfully.";
   *id = app_data->ID();
 
   return true;
@@ -554,14 +521,14 @@ bool PackageInstaller::Update(const std::string& app_id,
   scoped_refptr<ApplicationData> new_app_data =
       LoadApplication(unpacked_dir, app_id, ApplicationData::TEMP_DIRECTORY,
                       package->manifest_type(), &error);
-  if (!new_app_data) {
+  if (!new_app_data.get()) {
     LOG(ERROR) << "An error occurred during application updating: " << error;
     return false;
   }
 
   scoped_refptr<ApplicationData> old_app_data =
       storage_->GetApplicationData(app_id);
-  if (!old_app_data) {
+  if (!old_app_data.get()) {
     LOG(INFO) << "Application haven't installed yet: " << app_id;
     return false;
   }
@@ -589,7 +556,7 @@ bool PackageInstaller::Update(const std::string& app_id,
   new_app_data = LoadApplication(
       app_dir, app_id, ApplicationData::LOCAL_DIRECTORY,
       package->manifest_type(), &error);
-  if (!new_app_data) {
+  if (!new_app_data.get()) {
     LOG(ERROR) << "Error during loading new package: " << error;
     base::DeleteFile(app_dir, true);
     base::Move(tmp_dir, app_dir);
@@ -603,7 +570,7 @@ bool PackageInstaller::Update(const std::string& app_id,
     return false;
   }
 
-  if (!PlatformUpdate(new_app_data)) {
+  if (!PlatformUpdate(new_app_data.get())) {
     LOG(ERROR) << "Fail to update application, roll back to the old one.";
     base::DeleteFile(app_dir, true);
     if (!storage_->UpdateApplication(old_app_data)) {
@@ -631,14 +598,6 @@ bool PackageInstaller::Uninstall(const std::string& id) {
   }
 
   bool result = true;
-  scoped_refptr<ApplicationData> app_data =
-      storage_->GetApplicationData(app_id);
-  if (!app_data) {
-    LOG(ERROR) << "Failed to find application with id " << app_id
-               << " among the installed ones.";
-    result = false;
-  }
-
   if (!storage_->RemoveApplication(app_id)) {
     LOG(ERROR) << "Cannot uninstall application with id " << app_id
                << "; application is not installed.";
@@ -655,7 +614,7 @@ bool PackageInstaller::Uninstall(const std::string& id) {
     result = false;
   }
 
-  if (!PlatformUninstall(app_data))
+  if (!PlatformUninstall(app_id))
     result = false;
 
   return result;
@@ -696,4 +655,24 @@ void PackageInstaller::ContinueUnfinishedTasks() {
       }
     }
   }
+}
+
+void PackageInstaller::InitializePkgmgrSignal(
+    PlatformInstaller* platform_installer, const std::string& action,
+    const std::string& action_arg) {
+  DCHECK(platform_installer);
+  DCHECK(!action.empty());
+  DCHECK(!action_arg.empty());
+
+  if (key_.empty())
+    return;
+
+  const char* pkgmgr_argv[5];
+  pkgmgr_argv[0] = action.c_str();
+  pkgmgr_argv[1] = action_arg.c_str();  // this value is ignored by pkgmgr
+  pkgmgr_argv[2] = "-k";
+  pkgmgr_argv[3] = key_.c_str();
+  pkgmgr_argv[4] = "-q";
+
+  platform_installer->InitializePkgmgrSignal((quiet_ ? 5 : 4), pkgmgr_argv);
 }

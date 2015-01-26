@@ -40,5 +40,37 @@
         }],
       ],
     },
+    {
+      'target_name': 'xwalkctl',
+      'type': 'executable',
+      'product_name': 'xwalkctl',
+      'include_dirs': [
+        '../../../..',
+      ],
+      'dependencies': [
+        '../../../application/common/xwalk_application_common.gypi:xwalk_application_common_lib',
+        '../../../build/system.gyp:gio',
+        '../../../../build/linux/system.gyp:dbus',
+        '../../../../dbus/dbus.gyp:dbus',
+      ],
+      'sources': [
+        'xwalkctl_main.cc',
+      ],
+      'conditions' : [
+        ['tizen==1', {
+          'dependencies': [
+            '../../../build/system.gyp:tizen',
+          ],
+          'sources': [
+            '../tizen/xwalk_tizen_user.cc',
+            '../tizen/xwalk_tizen_user.h',
+            '../../../runtime/common/xwalk_paths.cc',
+            '../../../runtime/common/xwalk_paths.h',
+            '../../../runtime/common/xwalk_system_locale.cc',
+            '../../../runtime/common/xwalk_system_locale.h',
+          ],
+        }],
+      ],
+    },
   ],
 }

@@ -16,14 +16,13 @@ class RuntimeResourceDispatcherHostDelegate
   virtual ~RuntimeResourceDispatcherHostDelegate();
 
   static void ResourceDispatcherHostCreated();
+  static scoped_ptr<RuntimeResourceDispatcherHostDelegate> Create();
 
   virtual void RequestBeginning(
       net::URLRequest* request,
       content::ResourceContext* resource_context,
       content::AppCacheService* appcache_service,
       content::ResourceType resource_type,
-      int child_id,
-      int route_id,
       ScopedVector<content::ResourceThrottle>* throttles) OVERRIDE;
   virtual void DownloadStarting(
       net::URLRequest* request,
