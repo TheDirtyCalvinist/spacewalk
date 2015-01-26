@@ -7,92 +7,111 @@ package org.xwalk.core.internal;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.net.http.SslError;
 import android.view.View;
+import android.webkit.ValueCallback;
 import android.webkit.WebResourceResponse;
 
 /**
  * This class notifies the embedder resource events/callbacks.
  */
+@XWalkAPI(createExternally = true)
 public class XWalkResourceClientInternal {
     /**
      * Success
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_OK = 0;
     /**
      * Generic error
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_UNKNOWN = -1;
     /**
      * Server or proxy hostname lookup failed
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_HOST_LOOKUP = -2;
     /**
      * Unsupported authentication scheme (not basic or digest)
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_UNSUPPORTED_AUTH_SCHEME = -3;
     /**
      * User authentication failed on server
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_AUTHENTICATION = -4;
     /**
      * User authentication failed on proxy
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_PROXY_AUTHENTICATION = -5;
     /**
      * Failed to connect to the server
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_CONNECT = -6;
     /**
      * Failed to read or write to the server
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_IO = -7;
     /**
      * Connection timed out
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_TIMEOUT = -8;
     /**
      * Too many redirects
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_REDIRECT_LOOP = -9;
     /**
      * Unsupported URI scheme
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_UNSUPPORTED_SCHEME = -10;
     /**
      * Failed to perform SSL handshake
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_FAILED_SSL_HANDSHAKE = -11;
     /**
      * Malformed URL
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_BAD_URL = -12;
     /**
      * Generic file error
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_FILE = -13;
     /**
      * File not found
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_FILE_NOT_FOUND = -14;
     /**
      * Too many requests during this load
      * @since 1.0
      */
+    @XWalkAPI
     public static final int ERROR_TOO_MANY_REQUESTS = -15;
 
     /**
@@ -100,6 +119,7 @@ public class XWalkResourceClientInternal {
      * @param view the owner XWalkViewInternal instance.
      * @since 1.0
      */
+    @XWalkAPI
     public XWalkResourceClientInternal(XWalkViewInternal view) {
         // Keep the above parameter for future use.
     }
@@ -111,6 +131,7 @@ public class XWalkResourceClientInternal {
      * @param url the url for the resource to be loaded.
      * @since 1.0
      */
+    @XWalkAPI
     public void onLoadStarted(XWalkViewInternal view, String url) {
     }
 
@@ -121,6 +142,7 @@ public class XWalkResourceClientInternal {
      * @param url the url for the resource done for loading.
      * @since 1.0
      */
+    @XWalkAPI
     public void onLoadFinished(XWalkViewInternal view, String url) {
     }
 
@@ -130,6 +152,7 @@ public class XWalkResourceClientInternal {
      * @param progressInPercent the loading process in percent.
      * @since 1.0
      */
+    @XWalkAPI
     public void onProgressChanged(XWalkViewInternal view, int progressInPercent) {
     }
 
@@ -140,7 +163,7 @@ public class XWalkResourceClientInternal {
      * response and data will be used.  NOTE: This method is called by the
      * network thread so clients should exercise caution when accessing private
      * data.
-     * @param view The {@link org.xwalk.core.internal.XWalkViewInternal} that is requesting the
+     * @param view The owner XWalkViewInternal instance that is requesting the
      *             resource.
      * @param url The raw url of the resource.
      * @return A {@link android.webkit.WebResourceResponse} containing the
@@ -148,6 +171,7 @@ public class XWalkResourceClientInternal {
      *         resource itself.
      * @since 1.0
      */
+    @XWalkAPI
     public WebResourceResponse shouldInterceptLoadRequest(XWalkViewInternal view, String url) {
         return null;
     }
@@ -160,6 +184,7 @@ public class XWalkResourceClientInternal {
      * @param failingUrl The url that failed to load.
      * @since 1.0
      */
+    @XWalkAPI
     public void onReceivedLoadError(XWalkViewInternal view, int errorCode, String description,
             String failingUrl) {
         AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(view.getContext());
@@ -191,7 +216,46 @@ public class XWalkResourceClientInternal {
      *
      * @since 2.1
      */
+    @XWalkAPI
     public boolean shouldOverrideUrlLoading(XWalkViewInternal view, String url) {
         return false;
+    }
+
+    /**
+      * Notify the host application that an SSL error occurred while loading a
+      * resource. The host application must call either callback.onReceivedValue(true)
+      * or callback.onReceivedValue(false) . Note that the decision may be retained for
+      * use in response to future SSL errors. The default behavior is to pop up a dialog
+      * @param view the xwalkview that is initiating the callback
+      * @param callback passing 'true' means accepting the ssl error and continue to load.
+      *                 passing 'false' means forbidding to load the web page.
+      * @param error the SSL error object
+      * @since 4.0
+      */
+    @XWalkAPI
+    public void onReceivedSslError(XWalkViewInternal view, ValueCallback<Boolean> callback,
+            SslError error) {
+        final ValueCallback<Boolean> valueCallback = callback;
+        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(view.getContext());
+        dialogBuilder.setTitle(R.string.ssl_alert_title)
+                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        valueCallback.onReceiveValue(true);
+                        dialog.dismiss();
+                    }
+                }).setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        valueCallback.onReceiveValue(false);
+                        dialog.dismiss();
+                    }
+                }).setOnCancelListener(new DialogInterface.OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface dialog) {
+                        valueCallback.onReceiveValue(false);
+                    }
+                });
+        dialogBuilder.create().show();
     }
 }

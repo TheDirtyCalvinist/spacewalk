@@ -1,58 +1,54 @@
-// Copyright (c) 2013 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Intel Corporation. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdio.h>
-
 #include <glib.h>
 #include <gio/gio.h>
-#include <locale.h>
+
+#include <limits>
 
 #include "base/at_exit.h"
+#include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/path_service.h"
+
+#include "xwalk/application/common/tizen/application_storage.h"
+#include "xwalk/application/tools/tizen/xwalk_tizen_user.h"
+#include "xwalk/runtime/common/xwalk_paths.h"
 
 #include "dbus/bus.h"
 #include "dbus/message.h"
 #include "dbus/object_proxy.h"
 
-#include "xwalk/application/common/application_storage.h"
-#include "xwalk/application/common/installer/package_installer.h"
-#include "xwalk/application/tools/linux/dbus_connection.h"
-#include "xwalk/runtime/common/xwalk_paths.h"
-#if defined(OS_TIZEN)
-#include "xwalk/application/common/id_util.h"
-#include "xwalk/application/tools/linux/xwalk_tizen_user.h"
-#endif
-
 using xwalk::application::ApplicationData;
 using xwalk::application::ApplicationStorage;
-using xwalk::application::PackageInstaller;
 
-static char* install_path;
-static char* uninstall_appid;
+namespace {
 
-static GOptionEntry entries[] = {
-  { "install", 'i', 0, G_OPTION_ARG_STRING, &install_path,
-    "Path of the application to be installed/updated", "PATH" },
-  { "uninstall", 'u', 0, G_OPTION_ARG_STRING, &uninstall_appid,
-    "Uninstall the application with this appid", "APPID" },
+const gint debugging_port_not_set = std::numeric_limits<gint>::min();
+
+gint debugging_port = debugging_port_not_set;
+GOptionEntry entries[] = {
+  { "debugging_port", 'd', 0, G_OPTION_ARG_INT, &debugging_port,
+    "Enable remote debugging, port number 0 means to disable", NULL },
   { NULL }
 };
 
-#if defined(SHARED_PROCESS_MODE)
-namespace {
-
-const char xwalk_service_name[] = "org.crosswalkproject.Runtime1";
-const char xwalk_running_manager_iface[] =
+const char kServiceName[] = "org.crosswalkproject.Runtime1";
+const char kRunningManagerIface[] =
     "org.crosswalkproject.Running.Manager1";
 const dbus::ObjectPath kRunningManagerDBusPath("/running1");
 
-}  // namespace
+bool EnableRemoteDebugging(int port) {
+  if (port < 0) {
+    g_print("Remote debugging port cannot be negative\n");
+    return false;
+  }
+  if (port >= 65535) {
+    DLOG(ERROR) << "Invalid http debugger port number " << port;
+    return false;
+  }
 
-static void TerminateIfRunning(const std::string& app_id) {
   dbus::Bus::Options options;
 #if defined(OS_TIZEN_MOBILE)
   options.bus_type = dbus::Bus::CUSTOM_ADDRESS;
@@ -60,18 +56,27 @@ static void TerminateIfRunning(const std::string& app_id) {
 #endif
   scoped_refptr<dbus::Bus> bus(new dbus::Bus(options));
   dbus::ObjectProxy* app_proxy =
-      bus->GetObjectProxy(xwalk_service_name, kRunningManagerDBusPath);
-  if (!app_proxy)
-    return;
+      bus->GetObjectProxy(
+          kServiceName,
+          kRunningManagerDBusPath);
+  if (!app_proxy) {
+    DLOG(ERROR) << "Failed to get application proxy.";
+    return false;
+  }
 
   dbus::MethodCall method_call(
-      xwalk_running_manager_iface, "TerminateIfRunning");
+      kRunningManagerIface, "EnableRemoteDebugging");
   dbus::MessageWriter writer(&method_call);
-  writer.AppendString(app_id);
+  writer.AppendUint32(port);
 
   app_proxy->CallMethodAndBlock(&method_call, 1000);
+
+  if (!port)
+    g_print("Remote debugging has been disabled \n");
+  else
+    g_print("Remote debugging enabled at port %d \n", port);
+  return true;
 }
-#endif
 
 bool list_applications(ApplicationStorage* storage) {
   std::vector<std::string> app_ids;
@@ -80,68 +85,51 @@ bool list_applications(ApplicationStorage* storage) {
 
   g_print("Application ID                       Application Name\n");
   g_print("-----------------------------------------------------\n");
-  for (unsigned i = 0; i < app_ids.size(); ++i) {
-    scoped_refptr<ApplicationData> app_data =
-        storage->GetApplicationData(app_ids.at(i));
-    if (!app_data) {
+  for (auto id : app_ids) {
+    scoped_refptr<ApplicationData> app_data = storage->GetApplicationData(id);
+    if (!app_data.get()) {
       g_print("Failed to obtain app data for xwalk id: %s\n",
-              app_ids.at(i).c_str());
+              id.c_str());
       continue;
     }
-    g_print("%s  %s\n", app_ids.at(i).c_str(), app_data->Name().c_str());
+    g_print("%s  %s\n", id.c_str(), app_data->Name().c_str());
   }
   g_print("-----------------------------------------------------\n");
 
   return true;
 }
 
+}  // namespace
+
 int main(int argc, char* argv[]) {
-  setlocale(LC_ALL, "");
-  GError* error = NULL;
-  GOptionContext* context;
-  bool success = false;
-
-#if !GLIB_CHECK_VERSION(2, 36, 0)
-  // g_type_init() is deprecated on GLib since 2.36, Tizen has 2.32.
-  g_type_init();
-#endif
-
 #if defined(OS_TIZEN)
-  if (xwalk_tizen_check_user_app())
+  if (xwalk_tizen_check_user_for_xwalkctl())
     exit(1);
 #endif
-
-  context = g_option_context_new("- Crosswalk Application Management");
+  GOptionContext* context = g_option_context_new("- Crosswalk Setter");
   g_option_context_add_main_entries(context, entries, NULL);
+  GError* error = nullptr;
   if (!g_option_context_parse(context, &argc, &argv, &error)) {
     g_print("option parsing failed: %s\n", error->message);
+    g_option_context_free(context);
     exit(1);
   }
-
+  g_option_context_free(context);
   base::AtExitManager at_exit;
-  base::FilePath data_path;
-  xwalk::RegisterPathProvider();
-  PathService::Get(xwalk::DIR_DATA_PATH, &data_path);
-  scoped_ptr<ApplicationStorage> storage(new ApplicationStorage(data_path));
-  scoped_ptr<PackageInstaller> installer =
-      PackageInstaller::Create(storage.get());
 
-  if (install_path) {
-    std::string app_id;
-    const base::FilePath& path = base::FilePath(install_path);
-    success = installer->Install(path, &app_id);
-    if (!success && storage->Contains(app_id)) {
-      g_print("trying to update %s\n", app_id.c_str());
-      success = installer->Update(app_id, path);
-    }
-  } else if (uninstall_appid) {
-#if defined(SHARED_PROCESS_MODE)
-    TerminateIfRunning(uninstall_appid);
-#endif
-    success = installer->Uninstall(uninstall_appid);
+  if (debugging_port != debugging_port_not_set) {
+    if (!EnableRemoteDebugging(static_cast<int>(debugging_port)))
+      exit(1);
   } else {
-    success = list_applications(storage.get());
+    // FIXME : there should be a way to get application Id from platform, so
+    // the below code should not be needed.
+    xwalk::RegisterPathProvider();
+    base::FilePath data_path;
+    PathService::Get(xwalk::DIR_DATA_PATH, &data_path);
+    scoped_ptr<ApplicationStorage> storage(new ApplicationStorage(data_path));
+    if (!list_applications(storage.get()))
+      exit(1);
   }
 
-  return success ? 0 : 1;
+  return 0;
 }

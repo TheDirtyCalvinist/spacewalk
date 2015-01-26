@@ -27,8 +27,8 @@
 #include "net/http/http_network_session.h"
 #include "net/http/http_server_properties_impl.h"
 #include "net/proxy/proxy_service.h"
-#include "net/ssl/default_server_bound_cert_store.h"
-#include "net/ssl/server_bound_cert_service.h"
+#include "net/ssl/channel_id_service.h"
+#include "net/ssl/default_channel_id_store.h"
 #include "net/ssl/ssl_config_service_defaults.h"
 #include "net/url_request/data_protocol_handler.h"
 #include "net/url_request/file_protocol_handler.h"
@@ -40,6 +40,7 @@
 #include "net/url_request/url_request_job_factory_impl.h"
 #include "xwalk/application/common/constants.h"
 #include "xwalk/runtime/browser/runtime_network_delegate.h"
+#include "xwalk/runtime/common/xwalk_content_client.h"
 
 #if defined(OS_ANDROID)
 #include "xwalk/runtime/browser/android/cookie_manager.h"
@@ -75,7 +76,7 @@ RuntimeURLRequestContextGetter::RuntimeURLRequestContextGetter(
   // the URLRequestContextStorage on the IO thread in GetURLRequestContext().
   proxy_config_service_.reset(
       net::ProxyService::CreateSystemProxyConfigService(
-          io_loop_->message_loop_proxy(), file_loop_));
+          io_loop_->message_loop_proxy(), file_loop_->message_loop_proxy()));
 }
 
 RuntimeURLRequestContextGetter::~RuntimeURLRequestContextGetter() {
@@ -110,11 +111,11 @@ net::URLRequestContext* RuntimeURLRequestContextGetter::GetURLRequestContext() {
         &cookieable_schemes[0], cookieable_schemes.size());
     storage_->set_cookie_store(cookie_store);
 #endif
-    storage_->set_server_bound_cert_service(new net::ServerBoundCertService(
-        new net::DefaultServerBoundCertStore(NULL),
+    storage_->set_channel_id_service(new net::ChannelIDService(
+        new net::DefaultChannelIDStore(NULL),
         base::WorkerPool::GetTaskRunner(true)));
-    storage_->set_http_user_agent_settings(
-        new net::StaticHttpUserAgentSettings("en-us,en", base::EmptyString()));
+    storage_->set_http_user_agent_settings(new net::StaticHttpUserAgentSettings(
+        "en-us,en", xwalk::GetUserAgent()));
 
     scoped_ptr<net::HostResolver> host_resolver(
         net::HostResolver::CreateDefaultResolver(NULL));
@@ -147,8 +148,8 @@ net::URLRequestContext* RuntimeURLRequestContextGetter::GetURLRequestContext() {
         url_request_context_->cert_verifier();
     network_session_params.transport_security_state =
         url_request_context_->transport_security_state();
-    network_session_params.server_bound_cert_service =
-        url_request_context_->server_bound_cert_service();
+    network_session_params.channel_id_service =
+        url_request_context_->channel_id_service();
     network_session_params.proxy_service =
         url_request_context_->proxy_service();
     network_session_params.ssl_config_service =

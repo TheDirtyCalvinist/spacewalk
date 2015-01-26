@@ -41,7 +41,7 @@ typedef std::list<std::string> List;
 
 std::string GetLocalizedKey(const std::string& key,
                             const std::string& local) {
-  std::string lower_local = StringToLowerASCII(local);
+  std::string lower_local = base::StringToLowerASCII(local);
   if (lower_local.empty())
     lower_local = kLocaleUnlocalized;
   return key + kPathConnectSymbol + lower_local;
@@ -63,22 +63,10 @@ scoped_ptr<List> ExpandUserAgentLocalesList(const scoped_ptr<List>& list) {
 
 }  // namespace
 
-Manifest::Manifest(SourceType source_type,
-        scoped_ptr<base::DictionaryValue> value)
-    : source_type_(source_type),
-      data_(value.Pass()),
+Manifest::Manifest(scoped_ptr<base::DictionaryValue> value, Type type)
+    : data_(value.Pass()),
       i18n_data_(new base::DictionaryValue),
-      type_(TYPE_UNKNOWN) {
-  // FIXME: Hosted apps can contain start_url. Below is wrong.
-  if (data_->Get(keys::kStartURLKey, NULL)) {
-    type_ = TYPE_PACKAGED_APP;
-  } else if (data_->HasKey(keys::kAppKey)) {
-    if (data_->Get(keys::kLaunchWebURLKey, NULL)) {
-      type_ = TYPE_HOSTED_APP;
-    } else if (data_->Get(keys::kLaunchLocalPathKey, NULL)) {
-      type_ = TYPE_PACKAGED_APP;
-    }
-  }
+      type_(type) {
 
   if (data_->HasKey(widget_keys::kWidgetKey) &&
       data_->Get(widget_keys::kWidgetKey, NULL))
@@ -92,8 +80,7 @@ Manifest::~Manifest() {
 }
 
 bool Manifest::ValidateManifest(
-    std::string* error,
-    std::vector<InstallWarning>* warnings) const {
+    std::string* error) const {
   // TODO(xiang): support features validation
   return true;
 }
@@ -175,8 +162,8 @@ bool Manifest::GetList(
 
 Manifest* Manifest::DeepCopy() const {
   Manifest* manifest = new Manifest(
-      source_type_, scoped_ptr<base::DictionaryValue>(data_->DeepCopy()));
-  manifest->SetApplicationID(application_id_);
+      scoped_ptr<base::DictionaryValue>(data_->DeepCopy()),
+      type());
   return manifest;
 }
 
@@ -205,7 +192,7 @@ void Manifest::SetSystemLocale(const std::string& locale) {
 void Manifest::ParseWGTI18n() {
   data_->GetString(application_widget_keys::kDefaultLocaleKey,
                    &default_locale_);
-  default_locale_ = StringToLowerASCII(default_locale_);
+  default_locale_ = base::StringToLowerASCII(default_locale_);
 
   ParseWGTI18nEachPath(kWidgetNamePath);
   ParseWGTI18nEachPath(kWidgetDecriptionPath);

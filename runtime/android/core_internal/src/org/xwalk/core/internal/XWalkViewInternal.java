@@ -15,24 +15,28 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.ref.WeakReference;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
 
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApplicationStatus;
 import org.chromium.base.ApplicationStatus.ActivityStateListener;
 import org.chromium.base.CommandLine;
-
-import org.xwalk.core.internal.extension.XWalkExtensionManager;
-import org.xwalk.core.internal.extension.XWalkPathHelper;
+import org.xwalk.core.internal.extension.BuiltinXWalkExtensions;
 
 /**
  * <p>XWalkViewInternal represents an Android view for web apps/pages. Thus most of attributes
@@ -128,6 +132,7 @@ import org.xwalk.core.internal.extension.XWalkPathHelper;
  *   }
  * </pre>
  */
+@XWalkAPI(extendClass = FrameLayout.class, createExternally = true)
 public class XWalkViewInternal extends android.widget.FrameLayout {
 
     private class XWalkActivityStateListener implements ActivityStateListener {
@@ -146,23 +151,28 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     static final String PLAYSTORE_DETAIL_URI = "market://details?id=";
+    public static final int INPUT_FILE_REQUEST_CODE = 1;
+    private static final String TAG = XWalkViewInternal.class.getSimpleName();
 
     private XWalkContent mContent;
     private Activity mActivity;
     private Context mContext;
-    private XWalkExtensionManager mExtensionManager;
     private boolean mIsHidden;
     private XWalkActivityStateListener mActivityStateListener;
+    private ValueCallback<Uri> mFilePathCallback;
+    private String mCameraPhotoPath;
 
     /**
      * Normal reload mode as default.
      * @since 1.0
      */
+    @XWalkAPI
     public static final int RELOAD_NORMAL = 0;
     /**
      * Reload mode with bypassing the cache.
      * @since 1.0
      */
+    @XWalkAPI
     public static final int RELOAD_IGNORE_CACHE = 1;
 
     /**
@@ -171,12 +181,20 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param attrs    an AttributeSet passed to our parent.
      * @since 1.0
      */
+    @XWalkAPI(preWrapperLines = {
+                  "        super(${param1}, ${param2});"},
+              postWrapperLines = {
+                  "        if (bridge == null) return;",
+                  "        addView((FrameLayout)bridge, new FrameLayout.LayoutParams(",
+                  "                FrameLayout.LayoutParams.MATCH_PARENT,",
+                  "                FrameLayout.LayoutParams.MATCH_PARENT));"})
     public XWalkViewInternal(Context context, AttributeSet attrs) {
-        super(context, attrs);
+        super(convertContext(context), attrs);
 
         checkThreadSafety();
-        mContext = context;
-        init(context, attrs);
+        mActivity = (Activity) context;
+        mContext = getContext();
+        init(mContext, attrs);
     }
 
     /**
@@ -186,14 +204,34 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param activity the activity for this XWalkViewInternal.
      * @since 1.0
      */
+    @XWalkAPI(preWrapperLines = {
+                  "        super(${param1}, null);"},
+              postWrapperLines = {
+                  "        if (bridge == null) return;",
+                  "        addView((FrameLayout)bridge, new FrameLayout.LayoutParams(",
+                  "                FrameLayout.LayoutParams.MATCH_PARENT,",
+                  "                FrameLayout.LayoutParams.MATCH_PARENT));"})
     public XWalkViewInternal(Context context, Activity activity) {
-        super(context, null);
-        checkThreadSafety();
+        super(convertContext(context), null);
 
+        checkThreadSafety();
         // Make sure mActivity is initialized before calling 'init' method.
         mActivity = activity;
-        mContext = context;
-        init(context, null);
+        mContext = getContext();
+        init(mContext, null);
+    }
+
+    private static Context convertContext(Context context) {
+        Context ret = context;
+        Context bridgeContext = ReflectionHelper.getBridgeContext();
+        if (bridgeContext == null || context == null ||
+                bridgeContext.getPackageName().equals(context.getPackageName())) {
+            // Not acrossing package
+            ret = context;
+        } else {
+            ret = new MixedContext(bridgeContext, context);
+        }
+        return ret;
     }
 
     /**
@@ -220,6 +258,10 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      */
     public Context getViewContext() {
         return mContext;
+    }
+
+    public void completeWindowCreation(XWalkViewInternal newXWalkView) {
+        mContent.supplyContentsForPopup(newXWalkView == null ? null : newXWalkView.mContent);
     }
 
     private void init(Context context, AttributeSet attrs) {
@@ -332,10 +374,9 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         setNotificationService(new XWalkNotificationServiceImpl(context, this));
 
         if (!CommandLine.getInstance().hasSwitch("disable-xwalk-extensions")) {
-            // Enable xwalk extension mechanism and start load extensions here.
-            // Note that it has to be after above initialization.
-            mExtensionManager = new XWalkExtensionManager(context, getActivity());
-            mExtensionManager.loadExtensions();
+            BuiltinXWalkExtensions.load(context, getActivity());
+        } else {
+            XWalkPreferencesInternal.setValue(XWalkPreferencesInternal.ENABLE_EXTENSIONS, false);
         }
 
         XWalkPathHelper.initialize();
@@ -367,6 +408,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param content the content for the web page/app. Could be empty.
      * @since 1.0
      */
+    @XWalkAPI
     public void load(String url, String content) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -385,6 +427,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param content the content for manifest.json.
      * @since 1.0
      */
+    @XWalkAPI
     public void loadAppFromManifest(String url, String content) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -396,6 +439,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param mode the reload mode.
      * @since 1.0
      */
+    @XWalkAPI
     public void reload(int mode) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -406,6 +450,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * Stop current loading progress.
      * @since 1.0
      */
+    @XWalkAPI
     public void stopLoading() {
         if (mContent == null) return;
         checkThreadSafety();
@@ -418,6 +463,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @return the url for current web page/app.
      * @since 1.0
      */
+    @XWalkAPI
     public String getUrl() {
         if (mContent == null) return null;
         checkThreadSafety();
@@ -430,6 +476,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @return the title for current web page/app.
      * @since 1.0
      */
+    @XWalkAPI
     public String getTitle() {
         if (mContent == null) return null;
         checkThreadSafety();
@@ -441,6 +488,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @return the original url.
      * @since 1.0
      */
+    @XWalkAPI
     public String getOriginalUrl() {
         if (mContent == null) return null;
         checkThreadSafety();
@@ -453,6 +501,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @return the navigation history.
      * @since 1.0
      */
+    @XWalkAPI
     public XWalkNavigationHistoryInternal getNavigationHistory() {
         if (mContent == null) return null;
         checkThreadSafety();
@@ -467,6 +516,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param name the name injected in JavaScript.
      * @since 1.0
      */
+    @XWalkAPI
     public void addJavascriptInterface(Object object, String name) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -479,6 +529,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param callback the callback to handle the evaluated result.
      * @since 1.0
      */
+    @XWalkAPI
     public void evaluateJavascript(String script, ValueCallback<String> callback) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -491,6 +542,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param includeDiskFiles indicate whether to clear disk files for cache.
      * @since 1.0
      */
+    @XWalkAPI
     public void clearCache(boolean includeDiskFiles) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -502,6 +554,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @return true if any HTML element is occupying the whole screen.
      * @since 1.0
      */
+    @XWalkAPI
     public boolean hasEnteredFullscreen() {
         if (mContent == null) return false;
         checkThreadSafety();
@@ -513,6 +566,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * in fullscreen.
      * @since 1.0
      */
+    @XWalkAPI
     public void leaveFullscreen() {
         if (mContent == null) return;
         checkThreadSafety();
@@ -529,6 +583,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      *
      * @since 1.0
      */
+    @XWalkAPI
     public void pauseTimers() {
         if (mContent == null) return;
         checkThreadSafety();
@@ -545,6 +600,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      *
      * @since 1.0
      */
+    @XWalkAPI
     public void resumeTimers() {
         if (mContent == null) return;
         checkThreadSafety();
@@ -559,9 +615,9 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * called to pause above things.
      * @since 1.0
      */
+    @XWalkAPI
     public void onHide() {
         if (mContent == null || mIsHidden) return;
-        if (null != mExtensionManager) mExtensionManager.onPause();
         mContent.onPause();
         mIsHidden = true;
     }
@@ -574,9 +630,9 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * called to resume above things.
      * @since 1.0
      */
+    @XWalkAPI
     public void onShow() {
         if (mContent == null || !mIsHidden ) return;
-        if (null != mExtensionManager) mExtensionManager.onResume();
         mContent.onResume();
         mIsHidden = false;
     }
@@ -587,6 +643,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * called to release resources.
      * @since 1.0
      */
+    @XWalkAPI
     public void onDestroy() {
         destroy();
     }
@@ -601,10 +658,31 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param data passed from android.app.Activity.onActivityResult().
      * @since 1.0
      */
+    @XWalkAPI
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (mContent == null) return;
-        if (null != mExtensionManager)
-                mExtensionManager.onActivityResult(requestCode, resultCode, data);
+        if(requestCode == INPUT_FILE_REQUEST_CODE && mFilePathCallback != null) {
+            Uri results = null;
+
+            // Check that the response is a good one
+            if(Activity.RESULT_OK == resultCode) {
+                if(data == null) {
+                    // If there is not data, then we may have taken a photo
+                    if(mCameraPhotoPath != null) {
+                        results = Uri.parse(mCameraPhotoPath);
+                    }
+                } else {
+                    String dataString = data.getDataString();
+                    if (dataString != null) {
+                        results = Uri.parse(dataString);
+                    }
+                }
+            }
+
+            mFilePathCallback.onReceiveValue(results);
+            mFilePathCallback = null;
+            return;
+        }
         mContent.onActivityResult(requestCode, resultCode, data);
     }
 
@@ -616,6 +694,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param intent passed from android.app.Activity.onNewIntent().
      * @since 1.0
      */
+    @XWalkAPI
     public boolean onNewIntent(Intent intent) {
         if (mContent == null) return false;
         return mContent.onNewIntent(intent);
@@ -627,6 +706,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param outState the saved state for restoring.
      * @since 1.0
      */
+    @XWalkAPI
     public boolean saveState(Bundle outState) {
         if (mContent == null) return false;
         mContent.saveState(outState);
@@ -639,6 +719,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @return true if it can restore the state.
      * @since 1.0
      */
+    @XWalkAPI
     public boolean restoreState(Bundle inState) {
         if (mContent == null) return false;
         if (mContent.restoreState(inState) != null) return true;
@@ -651,8 +732,9 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @since 1.0
      */
     // TODO(yongsheng): make it static?
+    @XWalkAPI
     public String getAPIVersion() {
-        return "2.1";
+        return "4.1";
     }
 
     /**
@@ -661,6 +743,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @since 1.0
      */
     // TODO(yongsheng): make it static?
+    @XWalkAPI
     public String getXWalkVersion() {
         if (mContent == null) return null;
         return mContent.getXWalkVersion();
@@ -672,6 +755,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param client the XWalkUIClientInternal defined by callers.
      * @since 1.0
      */
+    @XWalkAPI
     public void setUIClient(XWalkUIClientInternal client) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -684,6 +768,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      * @param client the XWalkResourceClientInternal defined by callers.
      * @since 1.0
      */
+    @XWalkAPI
     public void setResourceClient(XWalkResourceClientInternal client) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -706,6 +791,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      *
      * @hide
      */
+    @XWalkAPI
     public void setNetworkAvailable(boolean networkUp) {
         if (mContent == null) return;
         checkThreadSafety();
@@ -713,17 +799,29 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     /**
-     * Enables remote debugging and returns the URL at which the dev tools server is listening
-     * for commands. The allowedUid argument can be used to specify the uid of the process that is
-     * permitted to connect.
-     * TODO(yongsheng): how to enable this in XWalkPreferencesInternal?
-     *
-     * @hide
+     * Enables remote debugging and returns the URL at which the dev tools
+     * server is listening for commands.
      */
-    public String enableRemoteDebugging(int allowedUid) {
+    public void enableRemoteDebugging() {
+        if (mContent == null) return;
+        checkThreadSafety();
+        mContent.enableRemoteDebugging();
+    }
+
+    /**
+     * Get the websocket url for remote debugging.
+     * @return the web socket url to remote debug this xwalk view.
+     * null will be returned if remote debugging is not enabled.
+     * @since 4.1
+     */
+    @XWalkAPI
+    public Uri getRemoteDebuggingUrl() {
         if (mContent == null) return null;
         checkThreadSafety();
-        return mContent.enableRemoteDebugging(allowedUid);
+        String wsUrl = mContent.getRemoteDebuggingUrl();
+        if (wsUrl == null || wsUrl.isEmpty()) return null;
+
+        return Uri.parse(wsUrl);
     }
 
     /**
@@ -769,15 +867,8 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         if (mContent == null) return;
         ApplicationStatus.unregisterActivityStateListener(mActivityStateListener);
         mActivityStateListener = null;
-        if (null != mExtensionManager) mExtensionManager.onDestroy();
         mContent.destroy();
         disableRemoteDebugging();
-    }
-
-    // Enables remote debugging and returns the URL at which the dev tools server is listening
-    // for commands. Only the current process is allowed to connect to the server.
-    String enableRemoteDebugging() {
-        return enableRemoteDebugging(mContext.getApplicationInfo().uid);
     }
 
     void disableRemoteDebugging() {
@@ -899,5 +990,76 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
             default:
                 break;
         }
+    }
+
+    /**
+     * Tell the client to show a file chooser.
+     * @param uploadFile the callback class to handle the result from caller. It MUST
+     *        be invoked in all cases. Leave it not invoked will block all following
+     *        requests to open file chooser.
+     * @param acceptType value of the 'accept' attribute of the input tag associated
+     *        with this file picker.
+     * @param capture value of the 'capture' attribute of the input tag associated
+     *        with this file picker
+     */
+    public boolean showFileChooser(ValueCallback<Uri> uploadFile, String acceptType,
+            String capture) {
+        mFilePathCallback = uploadFile;
+
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (takePictureIntent.resolveActivity(getActivity().getPackageManager()) != null) {
+            // Create the File where the photo should go
+            File photoFile = null;
+            try {
+                photoFile = createImageFile();
+                takePictureIntent.putExtra("PhotoPath", mCameraPhotoPath);
+            } catch (IOException ex) {
+                // Error occurred while creating the File
+                Log.e(TAG, "Unable to create Image File", ex);
+            }
+
+            // Continue only if the File was successfully created
+            if (photoFile != null) {
+                mCameraPhotoPath = "file:" + photoFile.getAbsolutePath();
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT,
+                        Uri.fromFile(photoFile));
+            } else {
+                takePictureIntent = null;
+            }
+        }
+
+        Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
+        contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
+        contentSelectionIntent.setType("*/*");
+
+        Intent camcorder = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+        Intent soundRecorder = new Intent(
+                MediaStore.Audio.Media.RECORD_SOUND_ACTION);
+        ArrayList<Intent> extraIntents = new ArrayList<Intent>();
+        extraIntents.add(takePictureIntent);
+        extraIntents.add(camcorder);
+        extraIntents.add(soundRecorder);
+
+        Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
+        chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
+        chooserIntent.putExtra(Intent.EXTRA_TITLE, "Choose an action");
+        chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS,
+                extraIntents.toArray(new Intent[] { }));
+        getActivity().startActivityForResult(chooserIntent, INPUT_FILE_REQUEST_CODE);
+        return true;
+    }
+
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_PICTURES);
+        File imageFile = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+        return imageFile;
     }
 }

@@ -8,9 +8,11 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
+import android.os.Message;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -20,6 +22,7 @@ import android.widget.EditText;
 /**
  * This class notifies the embedder UI events/callbacks.
  */
+@XWalkAPI(createExternally = true)
 public class XWalkUIClientInternal {
 
     // Strings for displaying Dialog.
@@ -37,12 +40,24 @@ public class XWalkUIClientInternal {
     private XWalkViewInternal mXWalkView;
     private boolean mOriginalFullscreen;
     private boolean mOriginalForceNotFullscreen;
+    private boolean mIsFullscreen = false;
+
+    /**
+     * Initiator
+     * @since 4.0
+     */
+    @XWalkAPI
+    public enum InitiateByInternal {
+        BY_USER_GESTURE,
+        BY_JAVASCRIPT
+    }
 
     /**
      * Constructor.
      * @param view the owner XWalkViewInternal instance.
      * @since 1.0
      */
+    @XWalkAPI
     public XWalkUIClientInternal(XWalkViewInternal view) {
         mContext = view.getContext();
         mDecorView = view.getActivity().getWindow().getDecorView();
@@ -65,10 +80,47 @@ public class XWalkUIClientInternal {
     }
 
     /**
+     * Request the host application to create a new window
+     * @param view The XWalkView which initiate the request for a new window
+     * @param initiator How the request was initiated
+     * @param callback Callback when once a new XWalkView has been created
+     * @return Return true if the host application will create a new window
+     * @since 4.0
+     */
+    @XWalkAPI
+    public boolean onCreateWindowRequested(XWalkViewInternal view, InitiateByInternal initiator,
+            ValueCallback<XWalkViewInternal> callback) {
+        return false;
+    }
+
+    /**
+     * Notify the host application that an icon is available, send the message to start the downloading
+     * @param view The XWalkView that icon belongs to
+     * @param url The icon url
+     * @param startDownload Message to initiate icon download
+     * @since 4.0
+     */
+    @XWalkAPI
+    public void onIconAvailable(XWalkViewInternal view, String url, Message startDownload) {
+    }
+
+    /**
+     * Notify the host application of a new icon has been downloaded
+     * @param view The XWalkView that icon belongs to
+     * @param url The icon url
+     * @param icon The icon image
+     * @since 4.0
+     */
+    @XWalkAPI
+    public void onReceivedIcon(XWalkViewInternal view, String url, Bitmap icon) {
+    }
+
+    /**
      * Request display and focus for this XWalkViewInternal.
      * @param view the owner XWalkViewInternal instance.
      * @since 1.0
      */
+    @XWalkAPI
     public void onRequestFocus(XWalkViewInternal view) {
     }
 
@@ -77,6 +129,7 @@ public class XWalkUIClientInternal {
      * @param view the owner XWalkViewInternal instance.
      * @since 1.0
      */
+    @XWalkAPI
     public void onJavascriptCloseWindow(XWalkViewInternal view) {
         if (view != null && view.getActivity() != null) {
             view.getActivity().finish();
@@ -87,6 +140,7 @@ public class XWalkUIClientInternal {
      * The type of JavaScript modal dialog.
      * @since 1.0
      */
+    @XWalkAPI
     public enum JavascriptMessageTypeInternal {
         /** JavaScript alert dialog. */
         JAVASCRIPT_ALERT,
@@ -108,6 +162,7 @@ public class XWalkUIClientInternal {
      * @param result the callback to handle the result from caller.
      * @since 1.0
      */
+    @XWalkAPI
     public boolean onJavascriptModalDialog(XWalkViewInternal view, JavascriptMessageTypeInternal type,
             String url, String message, String defaultValue, XWalkJavascriptResultInternal result) {
         switch(type) {
@@ -133,6 +188,7 @@ public class XWalkUIClientInternal {
      * @param enterFullscreen true if it has entered fullscreen mode.
      * @since 1.0
      */
+    @XWalkAPI
     public void onFullscreenToggled(XWalkViewInternal view, boolean enterFullscreen) {
         Activity activity = view.getActivity();
         if (enterFullscreen) {
@@ -144,23 +200,26 @@ public class XWalkUIClientInternal {
             } else {
                 mOriginalForceNotFullscreen = false;
             }
-            if (VERSION.SDK_INT >= VERSION_CODES.KITKAT) {
-                mSystemUiFlag = mDecorView.getSystemUiVisibility();
-                mDecorView.setSystemUiVisibility(
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-            } else {
-                if ((activity.getWindow().getAttributes().flags &
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0) {
-                    mOriginalFullscreen = true;
+            if (!mIsFullscreen) {
+                if (VERSION.SDK_INT >= VERSION_CODES.KITKAT) {
+                    mSystemUiFlag = mDecorView.getSystemUiVisibility();
+                    mDecorView.setSystemUiVisibility(
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                            View.SYSTEM_UI_FLAG_FULLSCREEN |
+                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
                 } else {
-                    mOriginalFullscreen = false;
-                    activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                    if ((activity.getWindow().getAttributes().flags &
+                            WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0) {
+                        mOriginalFullscreen = true;
+                    } else {
+                        mOriginalFullscreen = false;
+                        activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                    }
                 }
+                mIsFullscreen = true;
             }
         } else {
             if (mOriginalForceNotFullscreen) {
@@ -175,6 +234,7 @@ public class XWalkUIClientInternal {
                     activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
                 }
             }
+            mIsFullscreen = false;
         }
     }
 
@@ -190,6 +250,7 @@ public class XWalkUIClientInternal {
      *        with this file picker
      * @since 1.0
      */
+    @XWalkAPI
     public void openFileChooser(XWalkViewInternal view, ValueCallback<Uri> uploadFile,
             String acceptType, String capture) {
         uploadFile.onReceiveValue(null);
@@ -202,6 +263,7 @@ public class XWalkUIClientInternal {
      * @param newScale the current scale factor after scaling.
      * @since 1.0
      */
+    @XWalkAPI
     public void onScaleChanged(XWalkViewInternal view, float oldScale, float newScale) {
     }
 
@@ -219,6 +281,7 @@ public class XWalkUIClientInternal {
      *
      * @since 2.1
      */
+    @XWalkAPI
     public boolean shouldOverrideKeyEvent(XWalkViewInternal view, KeyEvent event) {
         return false;
     }
@@ -235,6 +298,7 @@ public class XWalkUIClientInternal {
      *
      * @since 2.1
      */
+    @XWalkAPI
     public void onUnhandledKeyEvent(XWalkViewInternal view, KeyEvent event) {
     }
 
@@ -244,6 +308,7 @@ public class XWalkUIClientInternal {
      * @param title A String containing the new title of the document.
      * @since 2.1
      */
+    @XWalkAPI
     public void onReceivedTitle(XWalkViewInternal view, String title) {
     }
 
@@ -252,6 +317,7 @@ public class XWalkUIClientInternal {
      * The status when a page stopped loading
      * @since 2.1
      */
+    @XWalkAPI
     public enum LoadStatusInternal {
         /** Loading finished. */
         FINISHED,
@@ -273,14 +339,14 @@ public class XWalkUIClientInternal {
      *
      * @since 2.1
      */
+    @XWalkAPI
     public void onPageLoadStarted(XWalkViewInternal view, String url) {
     }
 
     /**
      * Notify the host application that a page has stopped loading. This method
      * is called only for main frame. When onPageLoadStopped() is called, the
-     * rendering picture may not be updated yet. To get the notification for the
-     * new Picture, use {@link XWalkViewInternal.PictureListener#onNewPicture}.
+     * rendering picture may not be updated yet.
      *
      * @param view The XWalkViewInternal that is initiating the callback.
      * @param url The url of the page.
@@ -288,6 +354,7 @@ public class XWalkUIClientInternal {
      *
      * @since 2.1
      */
+    @XWalkAPI
     public void onPageLoadStopped(XWalkViewInternal view, String url, LoadStatusInternal status) {
     }
 

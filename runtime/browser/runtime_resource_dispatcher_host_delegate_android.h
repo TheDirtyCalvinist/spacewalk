@@ -8,7 +8,6 @@
 #include <map>
 #include <utility>
 
-#include "base/lazy_instance.h"
 #include "content/public/browser/content_browser_client.h"
 #include "xwalk/runtime/browser/runtime_resource_dispatcher_host_delegate.h"
 
@@ -31,15 +30,11 @@ class RuntimeResourceDispatcherHostDelegateAndroid
   RuntimeResourceDispatcherHostDelegateAndroid();
   virtual ~RuntimeResourceDispatcherHostDelegateAndroid();
 
-  static void ResourceDispatcherHostCreated();
-
   virtual void RequestBeginning(
       net::URLRequest* request,
       content::ResourceContext* resource_context,
-      appcache::AppCacheService* appcache_service,
-      ResourceType::Type resource_type,
-      int child_id,
-      int route_id,
+      content::AppCacheService* appcache_service,
+      content::ResourceType resource_type,
       ScopedVector<content::ResourceThrottle>* throttles) OVERRIDE;
   virtual void DownloadStarting(
       net::URLRequest* request,
@@ -56,8 +51,7 @@ class RuntimeResourceDispatcherHostDelegateAndroid
   virtual bool HandleExternalProtocol(
       const GURL& url,
       int child_id,
-      int route_id,
-      bool initiated_by_user_gesture) OVERRIDE;
+      int route_id) OVERRIDE;
   virtual void OnResponseStarted(
       net::URLRequest* request,
       content::ResourceContext* resource_context,
@@ -72,8 +66,6 @@ class RuntimeResourceDispatcherHostDelegateAndroid
                                  int render_frame_id,
                                  IoThreadClientThrottle* pending_throttle);
  private:
-  friend struct base::DefaultLazyInstanceTraits<
-      RuntimeResourceDispatcherHostDelegateAndroid>;
   // These methods must be called on IO thread.
   void OnIoThreadClientReadyInternal(int new_render_process_id,
                                      int new_render_frame_id);

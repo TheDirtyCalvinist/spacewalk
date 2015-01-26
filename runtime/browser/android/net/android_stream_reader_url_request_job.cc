@@ -34,6 +34,7 @@
 #include "xwalk/runtime/browser/android/net/url_constants.h"
 
 using base::android::AttachCurrentThread;
+using base::android::DetachFromVM;
 using base::PostTaskAndReplyWithResult;
 using content::BrowserThread;
 using xwalk::InputStream;
@@ -129,6 +130,8 @@ void OpenInputStreamOnWorkerThread(
                              base::Bind(callback,
                                         base::Passed(delegate.Pass()),
                                         base::Passed(input_stream.Pass())));
+
+  DetachFromVM();
 }
 
 }  // namespace
@@ -158,7 +161,7 @@ void AndroidStreamReaderURLRequestJob::Start() {
       // name, otherwise the resource request should be rejected.
       // TODO(Xingnan): More permission control policy will be added here,
       // if it's needed.
-      if (request()->url().host() != StringToLowerASCII(package_name)) {
+      if (request()->url().host() != base::StringToLowerASCII(package_name)) {
         HeadersComplete(kHTTPForbidden, kHTTPForbiddenText);
         return;
       }

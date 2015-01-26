@@ -45,8 +45,7 @@ bool TizenSplashScreenHandler::Parse(scoped_refptr<ApplicationData> application,
 
 bool TizenSplashScreenHandler::Validate(
     scoped_refptr<const ApplicationData> application,
-    std::string* error,
-    std::vector<InstallWarning>* warnings) const {
+    std::string* error) const {
   const Manifest* manifest = application->GetManifest();
   DCHECK(manifest);
   base::Value* splash_screen = NULL;
@@ -59,7 +58,7 @@ bool TizenSplashScreenHandler::Validate(
   splash_screen->GetAsDictionary(&ss_dict);
   std::string ss_src;
   ss_dict->GetString(keys::kTizenSplashScreenSrcKey, &ss_src);
-  base::FilePath path = application->Path().Append(FILE_PATH_LITERAL(ss_src));
+  base::FilePath path = application->path().Append(FILE_PATH_LITERAL(ss_src));
   if (!base::PathExists(path)) {
     *error = std::string("The splash screen image does not exist");
     return false;

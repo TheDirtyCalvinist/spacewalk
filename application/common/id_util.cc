@@ -12,6 +12,8 @@
 #include "xwalk/application/common/manifest_handlers/tizen_application_handler.h"
 
 #if defined(OS_TIZEN)
+#include "xwalk/application/common/tizen/package_query.h"
+
 #include "third_party/re2/re2/re2.h"
 #endif
 
@@ -21,6 +23,7 @@ namespace {
 #if defined(OS_TIZEN)
 const char kWGTAppIdPattern[] = "\\A([0-9a-zA-Z]{10})[.][0-9a-zA-Z]{1,52}\\z";
 const char kXPKAppIdPattern[] = "\\Axwalk[.]([a-p]{32})\\z";
+const char kPkgIdPattern[] = "\\A([0-9a-zA-Z]{10,})\\z";
 const std::string kAppIdPrefix("xwalk.");
 #endif
 const size_t kIdSize = 16;
@@ -45,7 +48,8 @@ static void ConvertHexadecimalToIDAlphabet(std::string* id) {
 std::string GenerateId(const std::string& input) {
   uint8 hash[kIdSize];
   crypto::SHA256HashString(input, hash, sizeof(hash));
-  std::string output = StringToLowerASCII(base::HexEncode(hash, sizeof(hash)));
+  std::string output =
+      base::StringToLowerASCII(base::HexEncode(hash, sizeof(hash)));
   ConvertHexadecimalToIDAlphabet(&output);
 
 #if defined(OS_TIZEN)
@@ -70,17 +74,37 @@ bool IsValidWGTID(const std::string& id) {
 bool IsValidXPKID(const std::string& id) {
   return RE2::FullMatch(id, kXPKAppIdPattern);
 }
+
+bool IsValidPkgID(const std::string& id) {
+  return RE2::FullMatch(id, kPkgIdPattern);
+}
+
+std::string AppIdToPkgId(const std::string& id) {
+  std::string package_id;
+  if (!RE2::FullMatch(id, kWGTAppIdPattern, &package_id) &&
+      !RE2::FullMatch(id, kXPKAppIdPattern, &package_id)) {
+    LOG(ERROR) << "Cannot get package_id from invalid app id";
+    return std::string();
+  }
+  return package_id;
+}
+
+std::string PkgIdToAppId(const std::string& id) {
+  base::FilePath app_path = GetPackagePath(id);
+  if (app_path.empty())
+    return std::string();
+
+  return app_path.BaseName().value();
+}
+
 #endif
 
 bool IsValidApplicationID(const std::string& id) {
 #if defined(OS_TIZEN)
-  if (IsValidWGTID(id) ||
-      IsValidXPKID(id))
-    return true;
-  return false;
+  return (IsValidWGTID(id) || IsValidXPKID(id));
 #endif
 
-  std::string temp = StringToLowerASCII(id);
+  std::string temp = base::StringToLowerASCII(id);
   // Verify that the id is legal.
   if (temp.size() != (kIdSize * 2))
     return false;
@@ -93,19 +117,6 @@ bool IsValidApplicationID(const std::string& id) {
 
   return true;
 }
-
-#if defined(OS_TIZEN)
-std::string GetPackageIdFromAppId(const std::string& app_id) {
-  std::string package_id;
-  if (RE2::FullMatch(app_id, kWGTAppIdPattern, &package_id) ||
-      RE2::FullMatch(app_id, kXPKAppIdPattern, &package_id)) {
-    return package_id;
-  } else {
-    LOG(ERROR) << "Cannot get package_id from invalid app id";
-    return app_id;
-  }
-}
-#endif
 
 }  // namespace application
 }  // namespace xwalk

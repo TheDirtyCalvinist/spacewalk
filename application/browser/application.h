@@ -1,4 +1,5 @@
 // Copyright (c) 2013 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,7 +25,7 @@
 
 
 namespace content {
-  class RenderProcessHost;
+class RenderProcessHost;
 }
 
 namespace xwalk {
@@ -58,28 +59,13 @@ class Application : public Runtime::Observer,
     virtual ~Observer() {}
   };
 
-  // Manifest keys that can be used as application entry points.
-  enum LaunchEntryPoint {
-    StartURLKey = 1 << 0,  // start_url
-    LaunchLocalPathKey = 1 << 1,  // app.launch.local_path
-    URLKey = 1 << 2,  // url
-    Default = StartURLKey | LaunchLocalPathKey
-  };
-  typedef unsigned LaunchEntryPoints;
-
   struct LaunchParams {
-    LaunchParams() :
-        entry_points(Default),
-        launcher_pid(0),
-        force_fullscreen(false) {}
-
-    LaunchEntryPoints entry_points;
-
     // Used only when running as service. Specifies the PID of the launcher
     // process.
     int32 launcher_pid;
 
     bool force_fullscreen;
+    bool remote_debugging;
   };
 
   // Closes all the application's runtimes (application pages).
@@ -101,8 +87,8 @@ class Application : public Runtime::Observer,
   content::RenderProcessHost* render_process_host() {
     return render_process_host_; }
 
-  const ApplicationData* data() const { return data_; }
-  ApplicationData* data() { return data_; }
+  const ApplicationData* data() const { return data_.get(); }
+  ApplicationData* data() { return data_.get(); }
 
   // Tells whether the application use the specified extension.
   bool UseExtension(const std::string& extension_name) const;
@@ -124,12 +110,13 @@ class Application : public Runtime::Observer,
                      StoredPermission perm);
   bool CanRequestURL(const GURL& url) const;
 
+  void set_observer(Observer* observer) { observer_ = observer; }
+
+  // FIXME(xinchao): This method will be deprecated soon.
+  ui::WindowShowState window_show_state() const { return window_show_state_; }
+
  protected:
-  // We enforce ApplicationService ownership.
-  friend class ApplicationService;
-  Application(scoped_refptr<ApplicationData> data,
-              RuntimeContext* context,
-              Observer* observer);
+  Application(scoped_refptr<ApplicationData> data, RuntimeContext* context);
   virtual bool Launch(const LaunchParams& launch_params);
   virtual void InitSecurityPolicy();
 
@@ -138,6 +125,7 @@ class Application : public Runtime::Observer,
   virtual base::FilePath GetSplashScreenPath();
 
   std::set<Runtime*> runtimes_;
+  RuntimeContext* runtime_context_;
   scoped_refptr<ApplicationData> const data_;
   // The application's render process host.
   content::RenderProcessHost* render_process_host_;
@@ -149,6 +137,10 @@ class Application : public Runtime::Observer,
   }
 
  private:
+  // We enforce ApplicationService ownership.
+  friend class ApplicationService;
+  static scoped_ptr<Application> Create(scoped_refptr<ApplicationData> data,
+      RuntimeContext* context);
   // Runtime::Observer implementation.
   virtual void OnRuntimeAdded(Runtime* runtime) OVERRIDE;
   virtual void OnRuntimeRemoved(Runtime* runtime) OVERRIDE;
@@ -163,23 +155,26 @@ class Application : public Runtime::Observer,
 
   // Try to extract the URL from different possible keys for entry points in the
   // manifest, returns it and the entry point used.
-  GURL GetStartURL(const LaunchParams& params, LaunchEntryPoint* used);
-  ui::WindowShowState GetWindowShowStateWGT(const LaunchParams& params);
-  ui::WindowShowState GetWindowShowStateXPK(const LaunchParams& params);
+  template <Manifest::Type> GURL GetStartURL();
+
+  template <Manifest::Type>
+  ui::WindowShowState GetWindowShowState(const LaunchParams& params);
 
   GURL GetAbsoluteURLFromKey(const std::string& key);
 
   void NotifyTermination();
 
-  RuntimeContext* runtime_context_;
   Observer* observer_;
-  // The entry point used as part of Launch().
-  LaunchEntryPoint entry_point_used_;
+
+  ui::WindowShowState window_show_state_;
+
   std::map<std::string, std::string> name_perm_map_;
   // Application's session permissions.
   StoredPermissionMap permission_map_;
   // Security policy.
   scoped_ptr<SecurityPolicy> security_policy_;
+  // Remote debugging enabled or not for this Application
+  bool remote_debugging_enabled_;
   // WeakPtrFactory should be always declared the last.
   base::WeakPtrFactory<Application> weak_factory_;
   DISALLOW_COPY_AND_ASSIGN(Application);

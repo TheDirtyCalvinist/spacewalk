@@ -11,7 +11,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "xwalk/application/common/application_data.h"
 #include "xwalk/application/common/manifest_handler.h"
-#include "xwalk/application/common/install_warning.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace xwalk {
@@ -32,14 +31,14 @@ class ScopedTestingManifestHandlerRegistry {
       : registry_(
           new ManifestHandlerRegistry(handlers)),
         prev_registry_(
-          ManifestHandlerRegistry::GetInstance(Package::XPK)) {
+          ManifestHandlerRegistry::GetInstance(Manifest::TYPE_MANIFEST)) {
     ManifestHandlerRegistry::SetInstanceForTesting(
-        registry_.get(), Package::XPK);
+        registry_.get(), Manifest::TYPE_MANIFEST);
   }
 
   ~ScopedTestingManifestHandlerRegistry() {
     ManifestHandlerRegistry::SetInstanceForTesting(
-        prev_registry_, Package::XPK);
+        prev_registry_, Manifest::TYPE_MANIFEST);
   }
 
   scoped_ptr<ManifestHandlerRegistry> registry_;
@@ -163,8 +162,7 @@ class ManifestHandlerTest : public testing::Test {
 
     virtual bool Validate(
         scoped_refptr<const ApplicationData> application,
-        std::string* error,
-        std::vector<InstallWarning>* warnings) const OVERRIDE {
+        std::string* error) const OVERRIDE {
       return return_value_;
     }
 
@@ -176,7 +174,7 @@ class ManifestHandlerTest : public testing::Test {
       return keys_;
     }
 
- protected:
+   protected:
     bool return_value_;
     bool always_validate_;
     std::vector<std::string> keys_;
@@ -221,10 +219,9 @@ TEST_F(ManifestHandlerTest, DependentHandlers) {
   manifest.SetInteger("g", 6);
   std::string error;
   scoped_refptr<ApplicationData> application = ApplicationData::Create(
-      base::FilePath(),
-      Manifest::INVALID_TYPE,
-      manifest,
-      "",
+      base::FilePath(), std::string(),
+      ApplicationData::LOCAL_DIRECTORY,
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest.DeepCopy()))),
       &error);
   EXPECT_TRUE(application.get());
   // A, B, C.EZ, C.D, K
@@ -249,10 +246,9 @@ TEST_F(ManifestHandlerTest, FailingHandlers) {
   // Succeeds when "a" is not recognized.
   std::string error;
   scoped_refptr<ApplicationData> application = ApplicationData::Create(
-      base::FilePath(),
-      Manifest::INVALID_TYPE,
-      manifest_a,
-      "",
+      base::FilePath(), std::string(),
+      ApplicationData::LOCAL_DIRECTORY,
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest_a.DeepCopy()))),
       &error);
   EXPECT_TRUE(application.get());
 
@@ -266,10 +262,9 @@ TEST_F(ManifestHandlerTest, FailingHandlers) {
   registry.reset(new ScopedTestingManifestHandlerRegistry(handlers));
 
   application = ApplicationData::Create(
-      base::FilePath(),
-      Manifest::INVALID_TYPE,
-      manifest_a,
-      "",
+      base::FilePath(), std::string(),
+      ApplicationData::LOCAL_DIRECTORY,
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest_a.DeepCopy()))),
       &error);
   EXPECT_FALSE(application.get());
   EXPECT_EQ("A", error);
@@ -287,29 +282,27 @@ TEST_F(ManifestHandlerTest, Validate) {
   manifest.SetInteger("b", 2);
   std::string error;
   scoped_refptr<ApplicationData> application = ApplicationData::Create(
-      base::FilePath(),
-      Manifest::COMMAND_LINE,
-      manifest,
-      "",
+      base::FilePath(), std::string(),
+      ApplicationData::LOCAL_DIRECTORY,
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest.DeepCopy()))),
       &error);
   EXPECT_TRUE(application.get());
 
   std::vector<ManifestHandler*> handlers;
-  std::vector<InstallWarning> warnings;
   // Always validates and fails.
   handlers.push_back(
       new TestManifestValidator(false, true, SingleKey("c")));
   registry.reset();
   registry.reset(new ScopedTestingManifestHandlerRegistry(handlers));
   EXPECT_FALSE(
-      registry->registry_->ValidateAppManifest(application, &error, &warnings));
+      registry->registry_->ValidateAppManifest(application, &error));
 
   handlers.push_back(
       new TestManifestValidator(false, false, SingleKey("c")));
   registry.reset();
   registry.reset(new ScopedTestingManifestHandlerRegistry(handlers));
   EXPECT_TRUE(
-      registry->registry_->ValidateAppManifest(application, &error, &warnings));
+      registry->registry_->ValidateAppManifest(application, &error));
 
   // Validates "a" and fails.
   handlers.push_back
@@ -317,7 +310,7 @@ TEST_F(ManifestHandlerTest, Validate) {
   registry.reset();
   registry.reset(new ScopedTestingManifestHandlerRegistry(handlers));
   EXPECT_FALSE(
-      registry->registry_->ValidateAppManifest(application, &error, &warnings));
+      registry->registry_->ValidateAppManifest(application, &error));
 }
 
 }  // namespace application

@@ -14,51 +14,30 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/strings/string16.h"
 #include "base/values.h"
-#include "xwalk/application/common/installer/package.h"
-#include "xwalk/application/common/install_warning.h"
 
 namespace xwalk {
 namespace application {
-
-struct InstallWarning;
 
 // Wraps the DictionaryValue form of application's manifest. Enforces access to
 // properties of the manifest using ManifestFeatureProvider.
 class Manifest {
  public:
-  // Where an application was loaded from.
-  enum SourceType {
-    INVALID_TYPE,
-    INTERNAL,           // Load from internal application registry.
-    COMMAND_LINE,       // Load from an unpacked application from command line.
-    NUM_TYPES
-  };
-
   enum Type {
-    TYPE_UNKNOWN = 0,
-    TYPE_HOSTED_APP,
-    TYPE_PACKAGED_APP
+    TYPE_MANIFEST,  // Corresponds to w3c.github.io/manifest
+    TYPE_WIDGET     // Corresponds to http://www.w3.org/TR/widgets
   };
 
-  Manifest(SourceType source_type, scoped_ptr<base::DictionaryValue> value);
-  virtual ~Manifest();
-
-  const std::string& GetApplicationID() const { return application_id_; }
-  void SetApplicationID(const std::string& id) { application_id_ = id; }
-
-  SourceType GetSourceType() const { return source_type_; }
+  explicit Manifest(
+      scoped_ptr<base::DictionaryValue> value, Type type = TYPE_MANIFEST);
+  ~Manifest();
 
   // Returns false and |error| will be non-empty if the manifest is malformed.
   // |warnings| will be populated if there are keys in the manifest that cannot
   // be specified by the application type.
-  bool ValidateManifest(std::string* error,
-                        std::vector<InstallWarning>* warnings) const;
+  bool ValidateManifest(std::string* error) const;
 
   // Returns the manifest type.
-  Type GetType() const { return type_; }
-
-  bool IsPackaged() const { return type_ == TYPE_PACKAGED_APP; }
-  bool IsHosted() const { return type_ == TYPE_HOSTED_APP; }
+  Type type() const { return type_; }
 
   // These access the wrapped manifest value, returning false when the property
   // does not exist or if the manifest type can't access it.
@@ -113,14 +92,10 @@ class Manifest {
   bool CanAccessPath(const std::string& path) const;
   bool CanAccessKey(const std::string& key) const;
 
-  // A persistent, globally unique ID. An application's ID is used in things
-  // like directory structures and URLs, and is expected to not change across
-  // versions. It is generated as a SHA-256 hash of the application's public
-  // key, or as a hash of the path in the case of unpacked applications.
-  std::string application_id_;
-
-  // The source the application was loaded from.
-  SourceType source_type_;
+#if defined(OS_TIZEN)
+  // Unique package id for tizen platform
+  std::string package_id_;
+#endif
 
   // The underlying dictionary representation of the manifest.
   scoped_ptr<base::DictionaryValue> data_;

@@ -14,8 +14,6 @@
 #include "components/navigation_interception/intercept_navigation_delegate.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/resource_controller.h"
-#include "content/public/browser/resource_dispatcher_host.h"
-#include "content/public/browser/resource_dispatcher_host_login_delegate.h"
 #include "content/public/browser/resource_request_info.h"
 #include "content/public/browser/resource_throttle.h"
 #include "content/public/common/url_constants.h"
@@ -27,16 +25,14 @@
 #include "xwalk/runtime/browser/android/xwalk_contents_io_thread_client.h"
 #include "xwalk/runtime/browser/android/xwalk_download_resource_throttle.h"
 #include "xwalk/runtime/browser/android/xwalk_login_delegate.h"
+#include "xwalk/runtime/browser/xwalk_content_browser_client.h"
+#include "xwalk/runtime/common/xwalk_content_client.h"
 
 using content::BrowserThread;
 using navigation_interception::InterceptNavigationDelegate;
 using xwalk::XWalkContentsIoThreadClient;
 
 namespace {
-base::LazyInstance<xwalk::RuntimeResourceDispatcherHostDelegateAndroid>
-    g_runtime_resource_dispatcher_host_delegate_android =
-        LAZY_INSTANCE_INITIALIZER;
-
 void SetCacheControlFlag(
     net::URLRequest* request, int flag) {
   const int all_cache_control_flags = net::LOAD_BYPASS_CACHE |
@@ -93,7 +89,8 @@ IoThreadClientThrottle::IoThreadClientThrottle(int render_process_id,
 
 IoThreadClientThrottle::~IoThreadClientThrottle() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-  g_runtime_resource_dispatcher_host_delegate_android.Get().
+  static_cast<RuntimeResourceDispatcherHostDelegateAndroid*>(
+      XWalkContentBrowserClient::Get()->resource_dispatcher_host_delegate())->
       RemovePendingThrottleOnIoThread(this);
 }
 
@@ -206,20 +203,11 @@ RuntimeResourceDispatcherHostDelegateAndroid::
     ~RuntimeResourceDispatcherHostDelegateAndroid() {
 }
 
-// static
-void RuntimeResourceDispatcherHostDelegateAndroid::
-ResourceDispatcherHostCreated() {
-  content::ResourceDispatcherHost::Get()->SetDelegate(
-      &g_runtime_resource_dispatcher_host_delegate_android.Get());
-}
-
 void RuntimeResourceDispatcherHostDelegateAndroid::RequestBeginning(
     net::URLRequest* request,
     content::ResourceContext* resource_context,
-    appcache::AppCacheService* appcache_service,
-    ResourceType::Type resource_type,
-    int child_id,
-    int route_id,
+    content::AppCacheService* appcache_service,
+    content::ResourceType resource_type,
     ScopedVector<content::ResourceThrottle>* throttles) {
   const content::ResourceRequestInfo* request_info =
       content::ResourceRequestInfo::ForRequest(request);
@@ -227,7 +215,7 @@ void RuntimeResourceDispatcherHostDelegateAndroid::RequestBeginning(
   // We allow intercepting only navigations within main frames. This
   // is used to post onPageStarted. We handle shouldOverrideUrlLoading
   // via a sync IPC for url loading in iframe.
-  if (resource_type == ResourceType::MAIN_FRAME) {
+  if (resource_type == content::RESOURCE_TYPE_MAIN_FRAME) {
     throttles->push_back(InterceptNavigationDelegate::CreateThrottleFor(
         request));
   }
@@ -238,12 +226,12 @@ void RuntimeResourceDispatcherHostDelegateAndroid::RequestBeginning(
   // be non-NULL but PopupPendingAssociation() will be set.
   scoped_ptr<XWalkContentsIoThreadClient> io_client =
       XWalkContentsIoThreadClient::FromID(
-          child_id, request_info->GetRenderFrameID());
+          request_info->GetChildID(), request_info->GetRenderFrameID());
   if (!io_client)
     return;
 
   throttles->push_back(new IoThreadClientThrottle(
-      child_id, request_info->GetRenderFrameID(), request));
+      request_info->GetChildID(), request_info->GetRenderFrameID(), request));
 }
 
 void RuntimeResourceDispatcherHostDelegateAndroid::DownloadStarting(
@@ -261,9 +249,9 @@ void RuntimeResourceDispatcherHostDelegateAndroid::DownloadStarting(
   std::string mime_type;
   int64 content_length = request->GetExpectedContentSize();
 
-  request->extra_request_headers().GetHeader(
-      net::HttpRequestHeaders::kUserAgent, &user_agent);
-
+  if (!request->extra_request_headers().GetHeader(
+      net::HttpRequestHeaders::kUserAgent, &user_agent))
+    user_agent = xwalk::GetUserAgent();
 
   net::HttpResponseHeaders* response_headers = request->response_headers();
   if (response_headers) {
@@ -302,8 +290,7 @@ content::ResourceDispatcherHostLoginDelegate*
 bool RuntimeResourceDispatcherHostDelegateAndroid::HandleExternalProtocol(
     const GURL& url,
     int child_id,
-    int route_id,
-    bool initiated_by_user_gesture) {
+    int route_id) {
   // On Android, there are many Uris need to be handled differently.
   // e.g: sms:, tel:, mailto: and etc.
   // So here return false to let embedders to decide which protocol
@@ -324,7 +311,7 @@ void RuntimeResourceDispatcherHostDelegateAndroid::OnResponseStarted(
     return;
   }
 
-  if (request_info->GetResourceType() == ResourceType::MAIN_FRAME) {
+  if (request_info->GetResourceType() == content::RESOURCE_TYPE_MAIN_FRAME) {
     // Check for x-auto-login header.
     auto_login_parser::HeaderData header_data;
     if (auto_login_parser::ParserHeaderInResponse(
@@ -361,7 +348,9 @@ void RuntimeResourceDispatcherHostDelegateAndroid::OnIoThreadClientReady(
           &RuntimeResourceDispatcherHostDelegateAndroid::
           OnIoThreadClientReadyInternal,
           base::Unretained(
-              g_runtime_resource_dispatcher_host_delegate_android.Pointer()),
+              static_cast<RuntimeResourceDispatcherHostDelegateAndroid*>(
+                  XWalkContentBrowserClient::Get()->
+                      resource_dispatcher_host_delegate())),
           new_render_process_id, new_render_frame_id));
 }
 
@@ -375,7 +364,9 @@ void RuntimeResourceDispatcherHostDelegateAndroid::AddPendingThrottle(
           &RuntimeResourceDispatcherHostDelegateAndroid::
               AddPendingThrottleOnIoThread,
           base::Unretained(
-              g_runtime_resource_dispatcher_host_delegate_android.Pointer()),
+              static_cast<RuntimeResourceDispatcherHostDelegateAndroid*>(
+                  XWalkContentBrowserClient::Get()->
+                      resource_dispatcher_host_delegate())),
           render_process_id, render_frame_id, pending_throttle));
 }
 

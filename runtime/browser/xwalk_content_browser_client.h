@@ -12,6 +12,7 @@
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/common/main_function_params.h"
 #include "xwalk/runtime/browser/runtime_geolocation_permission_context.h"
+#include "xwalk/runtime/browser/runtime_resource_dispatcher_host_delegate.h"
 
 namespace content {
 class BrowserContext;
@@ -83,9 +84,10 @@ class XWalkContentBrowserClient : public content::ContentBrowserClient {
       int cert_error,
       const net::SSLInfo& ssl_info,
       const GURL& request_url,
-      ResourceType::Type resource_type,
+      content::ResourceType resource_type,
       bool overridable,
       bool strict_enforcement,
+      bool expired_previous_decision,
       const base::Callback<void(bool)>& callback, // NOLINT
       content::CertificateRequestResultType* result) OVERRIDE;
 
@@ -95,8 +97,8 @@ class XWalkContentBrowserClient : public content::ContentBrowserClient {
   virtual void RequestDesktopNotificationPermission(
       const GURL& source_origin,
       content::RenderFrameHost* render_frame_host,
-      const base::Closure& callback) OVERRIDE;
-  virtual blink::WebNotificationPresenter::Permission
+      const base::Callback<void(blink::WebNotificationPermission)>& callback) OVERRIDE; // NOLINT
+  virtual blink::WebNotificationPermission
   CheckDesktopNotificationPermission(
       const GURL& source_url,
       content::ResourceContext* context,
@@ -104,7 +106,7 @@ class XWalkContentBrowserClient : public content::ContentBrowserClient {
   virtual void ShowDesktopNotification(
       const content::ShowDesktopNotificationHostMsgParams& params,
       content::RenderFrameHost* render_frame_host,
-      content::DesktopNotificationDelegate* delegate,
+      scoped_ptr<content::DesktopNotificationDelegate> delegate,
       base::Closure* cancel_callback) OVERRIDE;
   virtual void RequestGeolocationPermission(
       content::WebContents* web_contents,
@@ -135,8 +137,8 @@ class XWalkContentBrowserClient : public content::ContentBrowserClient {
   virtual content::BrowserPpapiHost* GetExternalBrowserPpapiHost(
       int plugin_process_id) OVERRIDE;
 
-#if defined(OS_ANDROID)
-  virtual void ResourceDispatcherHostCreated();
+#if defined(OS_ANDROID) || defined(OS_TIZEN)  || defined(OS_LINUX)
+  virtual void ResourceDispatcherHostCreated() OVERRIDE;
 #endif
 
   virtual void GetStoragePartitionConfigForSite(
@@ -147,8 +149,16 @@ class XWalkContentBrowserClient : public content::ContentBrowserClient {
       std::string* partition_name,
       bool* in_memory) OVERRIDE;
 
+  virtual content::DevToolsManagerDelegate*
+      GetDevToolsManagerDelegate() OVERRIDE;
 
   XWalkBrowserMainParts* main_parts() { return main_parts_; }
+
+#if defined(OS_ANDROID)
+  RuntimeResourceDispatcherHostDelegate* resource_dispatcher_host_delegate() {
+    return resource_dispatcher_host_delegate_.get();
+  }
+#endif
 
  private:
   XWalkRunner* xwalk_runner_;
@@ -156,6 +166,10 @@ class XWalkContentBrowserClient : public content::ContentBrowserClient {
   scoped_refptr<RuntimeGeolocationPermissionContext>
     geolocation_permission_context_;
   XWalkBrowserMainParts* main_parts_;
+  RuntimeContext* runtime_context_;
+
+  scoped_ptr<RuntimeResourceDispatcherHostDelegate>
+      resource_dispatcher_host_delegate_;
 
   DISALLOW_COPY_AND_ASSIGN(XWalkContentBrowserClient);
 };

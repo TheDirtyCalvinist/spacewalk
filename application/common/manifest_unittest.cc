@@ -13,7 +13,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "xwalk/application/common/application_manifest_constants.h"
-#include "xwalk/application/common/install_warning.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace errors = xwalk::application_manifest_errors;
@@ -27,13 +26,6 @@ class ManifestTest : public testing::Test {
   ManifestTest() : default_value_("test") {}
 
  protected:
-  void AssertType(Manifest* manifest, Manifest::Type type) {
-    EXPECT_EQ(type, manifest->GetType());
-    EXPECT_EQ(type == Manifest::TYPE_PACKAGED_APP,
-              manifest->IsPackaged());
-    EXPECT_EQ(type == Manifest::TYPE_HOSTED_APP, manifest->IsHosted());
-  }
-
   // Helper function that replaces the Manifest held by |manifest| with a copy
   // with its |key| changed to |value|. If |value| is NULL, then |key| will
   // instead be deleted.
@@ -46,8 +38,7 @@ class ManifestTest : public testing::Test {
       manifest_value->Set(key, value);
     else
       manifest_value->Remove(key, NULL);
-    manifest->reset(new Manifest(Manifest::COMMAND_LINE,
-            manifest_value.Pass()));
+    manifest->reset(new Manifest(manifest_value.Pass()));
   }
 
   std::string default_value_;
@@ -61,14 +52,10 @@ TEST_F(ManifestTest, ApplicationData) {
   manifest_value->SetString("unknown_key", "foo");
 
   scoped_ptr<Manifest> manifest(
-      new Manifest(Manifest::COMMAND_LINE, manifest_value.Pass()));
+      new Manifest(manifest_value.Pass()));
   std::string error;
-  std::vector<InstallWarning> warnings;
-  EXPECT_TRUE(manifest->ValidateManifest(&error, &warnings));
+  EXPECT_TRUE(manifest->ValidateManifest(&error));
   EXPECT_TRUE(error.empty());
-  // TODO(xiang): warnings will not be empty after enable manifest features
-  ASSERT_EQ(0u, warnings.size());
-  // AssertType(manifest.get(), Manifest::TYPE_HOSTED_AP);
 
   // The unknown key 'unknown_key' should be accesible.
   std::string value;
@@ -91,27 +78,10 @@ TEST_F(ManifestTest, ApplicationTypes) {
   value->SetString(keys::kXWalkVersionKey, "1");
 
   scoped_ptr<Manifest> manifest(
-      new Manifest(Manifest::COMMAND_LINE, value.Pass()));
+      new Manifest(value.Pass()));
   std::string error;
-  std::vector<InstallWarning> warnings;
-  EXPECT_TRUE(manifest->ValidateManifest(&error, &warnings));
+  EXPECT_TRUE(manifest->ValidateManifest(&error));
   EXPECT_TRUE(error.empty());
-  EXPECT_TRUE(warnings.empty());
-
-  // Platform app.
-  MutateManifest(
-      &manifest, keys::kStartURLKey,
-      new base::StringValue("main.html"));
-  AssertType(manifest.get(), Manifest::TYPE_PACKAGED_APP);
-  MutateManifest(
-      &manifest, keys::kStartURLKey, NULL);
-
-  // Hosted app.
-  MutateManifest(
-      &manifest, keys::kLaunchWebURLKey, new base::StringValue("foo"));
-  AssertType(manifest.get(), Manifest::TYPE_HOSTED_APP);
-  MutateManifest(
-      &manifest, keys::kLaunchWebURLKey, NULL);
 }
 
 }  // namespace application

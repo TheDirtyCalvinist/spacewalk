@@ -23,7 +23,10 @@ class WARPHandlerTest: public testing::Test {
   scoped_refptr<ApplicationData> CreateApplication() {
     std::string error;
     scoped_refptr<ApplicationData> application = ApplicationData::Create(
-        base::FilePath(), Manifest::INVALID_TYPE, manifest, "", &error);
+        base::FilePath(), std::string(), ApplicationData::LOCAL_DIRECTORY,
+        make_scoped_ptr(new Manifest(make_scoped_ptr(manifest.DeepCopy()),
+                                     Manifest::TYPE_WIDGET)),
+        &error);
     return application;
   }
 
@@ -52,7 +55,7 @@ TEST_F(WARPHandlerTest, OneWARP) {
   manifest.Set(keys::kAccessKey, warp);
   scoped_refptr<ApplicationData> application = CreateApplication();
   EXPECT_TRUE(application.get());
-  EXPECT_EQ(application->GetPackageType(), Package::WGT);
+  EXPECT_EQ(application->manifest_type(), Manifest::TYPE_WIDGET);
   const WARPInfo* info = GetWARPInfo(application);
   EXPECT_TRUE(info);
   scoped_ptr<base::ListValue> list(info->GetWARP()->DeepCopy());
@@ -76,7 +79,7 @@ TEST_F(WARPHandlerTest, WARPs) {
 
   scoped_refptr<ApplicationData> application = CreateApplication();
   EXPECT_TRUE(application.get());
-  EXPECT_EQ(application->GetPackageType(), Package::WGT);
+  EXPECT_EQ(application->manifest_type(), Manifest::TYPE_WIDGET);
 
   const WARPInfo* info = GetWARPInfo(application);
   EXPECT_TRUE(info);

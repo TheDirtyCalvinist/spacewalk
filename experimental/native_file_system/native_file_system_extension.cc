@@ -12,8 +12,9 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "grit/xwalk_resources.h"
+#include "storage/browser/fileapi/file_system_url.h"
+#include "storage/browser/fileapi/isolated_context.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "webkit/browser/fileapi/isolated_context.h"
 #include "xwalk/experimental/native_file_system/virtual_root_provider.h"
 
 namespace xwalk {
@@ -92,6 +93,36 @@ void NativeFileSystemInstance::HandleMessage(scoped_ptr<base::Value> msg) {
   checker->DoTask();
 }
 
+void NativeFileSystemInstance::HandleSyncMessage(
+    scoped_ptr<base::Value> msg) {
+  base::DictionaryValue* dict;
+  std::string command;
+
+  if (!msg->GetAsDictionary(&dict) || !dict->GetString("cmd", &command)) {
+    LOG(ERROR) << "Fail to handle command sync message.";
+    SendSyncReplyToJS(scoped_ptr<base::Value>(new base::StringValue("")));
+    return;
+  }
+
+  scoped_ptr<base::Value> result(new base::StringValue(""));
+  std::string virtual_root_string = "";
+  if ("getRealPath" ==  command &&
+      dict->GetString("path", &virtual_root_string)) {
+    std::transform(virtual_root_string.begin(),
+                   virtual_root_string.end(),
+                   virtual_root_string.begin(),
+                   ::toupper);
+    std::string real_path =
+        VirtualRootProvider::GetInstance()->GetRealPath(
+            virtual_root_string);
+    result.reset(new base::StringValue(real_path));
+  } else {
+    LOG(ERROR) << command << " ASSERT NOT REACHED.";
+  }
+
+  SendSyncReplyToJS(result.Pass());
+}
+
 FileSystemChecker::FileSystemChecker(
     int process_id,
     const std::string& path,
@@ -114,12 +145,12 @@ void FileSystemChecker::DoTask() {
 
 void FileSystemChecker::RegisterFileSystemsAndSendResponse() {
   CHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI));
-  fileapi::IsolatedContext* isolated_context =
-      fileapi::IsolatedContext::GetInstance();
+  storage::IsolatedContext* isolated_context =
+      storage::IsolatedContext::GetInstance();
   CHECK(isolated_context);
 
   std::string filesystem_id = isolated_context->RegisterFileSystemForPath(
-      fileapi::kFileSystemTypeNativeForPlatformApp,
+      storage::kFileSystemTypeNativeForPlatformApp,
       std::string(),
       base::FilePath::FromUTF8Unsafe(path_),
       &root_name_);

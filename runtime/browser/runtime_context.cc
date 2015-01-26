@@ -1,4 +1,5 @@
 // Copyright (c) 2013 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -55,9 +56,6 @@ class RuntimeContext::RuntimeResourceContext : public content::ResourceContext {
     return getter_->GetURLRequestContext();
   }
 
-  virtual bool AllowMicAccess(const GURL& origin) OVERRIDE { return false; }
-  virtual bool AllowCameraAccess(const GURL& origin) OVERRIDE { return false; }
-
   void set_url_request_context_getter(RuntimeURLRequestContextGetter* getter) {
     getter_ = getter;
   }
@@ -104,6 +102,10 @@ base::FilePath RuntimeContext::GetPath() const {
   base::FilePath result;
 #if defined(OS_ANDROID)
   CHECK(PathService::Get(base::DIR_ANDROID_APP_DATA, &result));
+  CommandLine* cmd_line = CommandLine::ForCurrentProcess();
+  if (cmd_line->HasSwitch(switches::kXWalkProfileName))
+    result = result.Append(
+        cmd_line->GetSwitchValuePath(switches::kXWalkProfileName));
 #else
   CHECK(PathService::Get(xwalk::DIR_DATA_PATH, &result));
 #endif
@@ -181,12 +183,26 @@ RuntimeContext::GetGuestManager() {
   return NULL;
 }
 
-quota::SpecialStoragePolicy* RuntimeContext::GetSpecialStoragePolicy() {
+storage::SpecialStoragePolicy* RuntimeContext::GetSpecialStoragePolicy() {
   return NULL;
 }
 
 content::PushMessagingService* RuntimeContext::GetPushMessagingService() {
   return NULL;
+}
+
+content::SSLHostStateDelegate* RuntimeContext::GetSSLHostStateDelegate() {
+  return NULL;
+}
+
+RuntimeURLRequestContextGetter* RuntimeContext::GetURLRequestContextGetterById(
+    const std::string& pkg_id) {
+  for (PartitionPathContextGetterMap::iterator it = context_getters_.begin();
+       it != context_getters_.end(); ++it) {
+    if (it->first.find(pkg_id))
+      return it->second.get();
+  }
+  return 0;
 }
 
 net::URLRequestContextGetter* RuntimeContext::CreateRequestContext(

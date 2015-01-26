@@ -15,7 +15,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.xwalk.core.internal.extension.api.XWalkDisplayManager;
-import org.xwalk.core.internal.extension.XWalkExtensionContext;
 
 class DeviceCapabilitiesDisplay {
     private static final String TAG = "DeviceCapabilitiesDisplay";
@@ -53,9 +52,9 @@ class DeviceCapabilitiesDisplay {
     };
 
     public DeviceCapabilitiesDisplay(DeviceCapabilities instance,
-                                     XWalkExtensionContext context) {
+                                     Context context) {
         mDeviceCapabilities = instance;
-        mDisplayManager = XWalkDisplayManager.getInstance(context.getContext());
+        mDisplayManager = XWalkDisplayManager.getInstance(context);
 
         // Fetch the original display list
         initDisplayList();
@@ -89,7 +88,7 @@ class DeviceCapabilitiesDisplay {
 
         JSONObject out = new JSONObject();
         try {
-            out.put("id", disp.getDisplayId());
+            out.put("id", Integer.toString(disp.getDisplayId()));
             out.put("name", disp.getName());
             out.put("primary", disp.getDisplayId() == disp.DEFAULT_DISPLAY);
             out.put("external", disp.getDisplayId() != disp.DEFAULT_DISPLAY);

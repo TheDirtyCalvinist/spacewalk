@@ -15,8 +15,6 @@
 #include "base/message_loop/message_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "cc/base/switches.h"
-#include "components/nacl/browser/nacl_browser.h"
-#include "components/nacl/browser/nacl_process_host.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/main_function_params.h"
@@ -29,13 +27,17 @@
 #include "xwalk/application/browser/application_system.h"
 #include "xwalk/extensions/browser/xwalk_extension_service.h"
 #include "xwalk/extensions/common/xwalk_extension_switches.h"
-#include "xwalk/runtime/browser/devtools/remote_debugging_server.h"
-#include "xwalk/runtime/browser/nacl_host/nacl_browser_delegate_impl.h"
 #include "xwalk/runtime/browser/runtime.h"
 #include "xwalk/runtime/browser/runtime_context.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
 #include "xwalk/runtime/common/xwalk_runtime_features.h"
 #include "xwalk/runtime/common/xwalk_switches.h"
+
+#if !defined(DISABLE_NACL)
+#include "components/nacl/browser/nacl_browser.h"
+#include "components/nacl/browser/nacl_process_host.h"
+#include "xwalk/runtime/browser/nacl_host/nacl_browser_delegate_impl.h"
+#endif
 
 #if defined(USE_AURA) && defined(USE_X11)
 #include "ui/base/ime/input_method_initializer.h"
@@ -74,6 +76,7 @@ namespace xwalk {
 XWalkBrowserMainParts::XWalkBrowserMainParts(
     const content::MainFunctionParams& parameters)
     : xwalk_runner_(XWalkRunner::GetInstance()),
+      extension_service_(NULL),
       startup_url_(url::kAboutBlankURL),
       parameters_(parameters),
       run_default_message_loop_(true) {
@@ -96,16 +99,12 @@ XWalkBrowserMainParts::~XWalkBrowserMainParts() {
 void XWalkBrowserMainParts::PreMainMessageLoopStart() {
   CommandLine* command_line = CommandLine::ForCurrentProcess();
   command_line->AppendSwitch(switches::kEnableViewport);
-  command_line->AppendSwitch(switches::kEnableViewportMeta);
 
   command_line->AppendSwitch(xswitches::kEnableOverlayScrollbars);
 
   // Enable multithreaded GPU compositing of web content.
   // This also enables pinch on Tizen.
   command_line->AppendSwitch(switches::kEnableThreadedCompositing);
-
-  // Show feedback on touch.
-  command_line->AppendSwitch(switches::kEnableGestureTapHighlight);
 
   // FIXME: Add comment why this is needed on Android and Tizen.
   command_line->AppendSwitch(switches::kAllowFileAccessFromFiles);
@@ -204,12 +203,8 @@ void XWalkBrowserMainParts::PreMainMessageLoopRun() {
     std::string port_str =
         command_line->GetSwitchValueASCII(switches::kRemoteDebuggingPort);
     int port;
-    const char* local_ip = "0.0.0.0";
-    if (base::StringToInt(port_str, &port) && port > 0 && port < 65535) {
-      remote_debugging_server_.reset(
-          new RemoteDebuggingServer(xwalk_runner_->runtime_context(),
-              local_ip, port, std::string()));
-    }
+    base::StringToInt(port_str, &port);
+    xwalk_runner_->EnableRemoteDebugging(port);
   }
 
   NativeAppWindow::Initialize();

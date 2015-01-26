@@ -12,13 +12,21 @@
 # are not present.
 %define _disable_nacl 1
 %else
-%define _disable_nacl 0
+# Since M39, Google has stopped shipping a 32-bit PNaCl toolchain, so we cannot
+# build NaCl on a fully 32-bit host anymore. See XWALK-2679.
+%define _disable_nacl 1
 %endif
 
+# adjust compression algorithm to speed up RPMS creation
+# source RPM and debug RPMS are big and take too much time
+# when using standard (lzma) compression
+%define _source_payload w3.gzdio
+%define _binary_payload w3.gzdio
+
 Name:           crosswalk
-Version:        9.37.194.0
+Version:        10.39.235.16
 Release:        0
-Summary:        Crosswalk is an app runtime based on Chromium
+Summary:        Chromium-based app runtime
 License:        (BSD-3-Clause and LGPL-2.1+)
 Group:          Web Framework/Web Run Time
 Url:            https://github.com/otcshare/crosswalk
@@ -66,13 +74,16 @@ BuildRequires:  pkgconfig(libudev)
 BuildRequires:  pkgconfig(libxml-2.0)
 BuildRequires:  pkgconfig(libxslt)
 BuildRequires:  pkgconfig(pango)
+BuildRequires:  pkgconfig(pkgmgr)
 BuildRequires:  pkgconfig(pkgmgr-info)
 BuildRequires:  pkgconfig(pkgmgr-installer)
 BuildRequires:  pkgconfig(pkgmgr-parser)
+BuildRequires:  pkgconfig(secure-storage)
+BuildRequires:  pkgconfig(sensor)
 BuildRequires:  pkgconfig(nspr)
 BuildRequires:  pkgconfig(nss)
-BuildRequires:  pkgconfig(sensor)
 BuildRequires:  pkgconfig(vconf)
+BuildRequires:  pkgconfig(xmlsec1)
 %if %{with x}
 BuildRequires:  pkgconfig(x11)
 BuildRequires:  pkgconfig(xcomposite)
@@ -88,6 +99,11 @@ BuildRequires:  pkgconfig(xt)
 BuildRequires:  pkgconfig(xtst)
 %endif
 
+%if "%{profile}" == "ivi"
+BuildRequires:  pkgconfig(murphy-common)
+BuildRequires:  pkgconfig(murphy-resource)
+%endif
+
 %if %{with wayland}
 BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  pkgconfig(wayland-cursor)
@@ -96,14 +112,16 @@ BuildRequires:  pkgconfig(xkbcommon)
 %else
 BuildRequires:  pkgconfig(scim)
 %endif
+Requires:  ca-certificates-tizen
+Requires:  ss-server
 
 %description
 Crosswalk is an app runtime based on Chromium. It is an open source project started by the Intel Open Source Technology Center (http://www.01.org).
 
-%define _manifestdir /usr/share/packages
-%define _manifestdir_ro /opt/share/packages
-%define _desktop_icondir /usr/share/icons/default/small
-%define _desktop_icondir_ro /opt/share/icons/default/small
+%define _manifestdir %TZ_SYS_RO_PACKAGES
+%define _manifestdir_ro %TZ_SYS_RO_PACKAGE
+%define _desktop_icondir %TZ_SYS_RW_ICONS/default/small
+%define _desktop_icondir_ro %TZ_SYS_RO_ICONS/default/small
 %define _dbusservicedir /usr/share/dbus-1/services
 %define _systemduserservicedir /usr/lib/systemd/user
 
@@ -131,6 +149,13 @@ cp -a src/xwalk/LICENSE LICENSE.xwalk
 %endif
 
 %build
+
+# Stop unconditionally passing -Wall to the compiler. Chromium has its own
+# mechanisms for deciding which parts of the code need -Wall and which need it
+# to be left out (since several pieces are built with -Werror). At least in
+# M39, this is preventing the "rtc_base" target from being built because it
+# does not expect -Wall to be passed to the compiler (see webrtc issue 3307).
+export CXXFLAGS=`echo $CXXFLAGS | sed s,-Wall,,g`
 
 # For ffmpeg on ia32. The original CFLAGS set by the gyp and config files in
 # src/third_party/ffmpeg already pass -O2 -fomit-frame-pointer, but Tizen's
@@ -166,7 +191,7 @@ if [ -n "${BUILDDIR_NAME}" ]; then
 fi
 
 %if %{with wayland}
-GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Duse_ozone=1 -Denable_ozone_wayland_vkb=1 -Denable_xdg_shell=0"
+GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Duse_ozone=1"
 %endif
 
 GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Ddisable_nacl=%{_disable_nacl}"
@@ -175,16 +200,6 @@ GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Ddisable_nacl=%{_disable_nacl}"
 %if "%{profile}" == "common" || "%{profile}" == "generic"
 GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Ddisable_fatal_linker_warnings=1"
 %endif
-
-# Temporarily disable Alsa support while snd_seq_* support is not enabled on
-# Tizen. See https://codereview.chromium.org/264973012 and
-# https://review.tizen.org/gerrit/#/c/24336/
-GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Duse_alsa=0"
-
-# Temporarily disable WebRTC support because its build currently hardcodes
-# dependencies on X11 and OpenSSL. We are still trying to get some
-# clarifications as to whether this is really necessary. See XWALK-2160.
-GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Denable_webrtc=0"
 
 # For building for arm in OBS, we need :
 # -> to unset sysroot value.
@@ -204,6 +219,10 @@ export CXXFLAGS=`echo $CXXFLAGS | sed s,-mfpu=vfpv3,-mfpu=neon,g`
 export FFLAGS=`echo $FFLAGS | sed s,-mfpu=vfpv3,-mfpu=neon,g`
 %endif
 
+%if "%{profile}" == "ivi"
+GYP_EXTRA_FLAGS="${GYP_EXTRA_FLAGS} -Denable_murphy=1"
+%endif
+
 # --no-parallel is added because chroot does not mount a /dev/shm, this will
 # cause python multiprocessing.SemLock error.
 export GYP_GENERATORS='ninja'
@@ -211,6 +230,7 @@ export GYP_GENERATORS='ninja'
 --no-parallel \
 ${GYP_EXTRA_FLAGS} \
 -Dchromeos=0 \
+-Dclang=0 \
 -Dtizen=1 \
 -Dpython_ver=2.7 \
 -Duse_aura=1 \
@@ -225,7 +245,7 @@ ${GYP_EXTRA_FLAGS} \
 -Dshared_process_mode=1 \
 -Denable_hidpi=1
 
-ninja %{?_smp_mflags} -C src/out/Release xwalk xwalkctl xwalk_launcher xwalk-pkg-helper
+ninja %{?_smp_mflags} -C src/out/Release xwalk xwalk_launcher xwalk_application_tools
 
 %install
 # Binaries.
@@ -234,18 +254,18 @@ install -p -D xwalk.service %{buildroot}%{_systemduserservicedir}/xwalk.service
 install -p -D src/out/Release/xwalk %{buildroot}%{_libdir}/xwalk/xwalk
 install -p -D src/out/Release/xwalkctl %{buildroot}%{_bindir}/xwalkctl
 install -p -D src/out/Release/xwalk-launcher %{buildroot}%{_bindir}/xwalk-launcher
-# xwalk-pkg-helper needs to be set-user-ID-root so it can finish the installation process.
-install -m 06755 -p -D src/out/Release/xwalk-pkg-helper %{buildroot}%{_bindir}/xwalk-pkg-helper
+install -p -D src/out/Release/xwalk_backend %{buildroot}%{_libdir}/xwalk/xwalk_backend
+install -p -D src/out/Release/lib/libxwalk_backend_lib.so %{buildroot}%{_libdir}/xwalk/libxwalk_backend_lib.so
 
 # Supporting libraries and resources.
 install -p -D src/out/Release/icudtl.dat %{buildroot}%{_libdir}/xwalk/icudtl.dat
 install -p -D src/out/Release/libffmpegsumo.so %{buildroot}%{_libdir}/xwalk/libffmpegsumo.so
 install -p -D src/out/Release/xwalk.pak %{buildroot}%{_libdir}/xwalk/xwalk.pak
+mkdir -p %{buildroot}%{_datadir}/xwalk
+install -p -D src/xwalk/application/common/tizen/configuration/*.xsd %{buildroot}%{_datadir}/xwalk/
 
 # PNaCl
 %if ! %{_disable_nacl}
-install -p -D src/out/Release/libppGoogleNaClPluginChrome.so %{buildroot}%{_libdir}/xwalk/libppGoogleNaClPluginChrome.so
-install -p -D src/out/Release/nacl_bootstrap_munge_phdr %{buildroot}%{_libdir}/xwalk/nacl_bootstrap_munge_phdr
 install -p -D src/out/Release/nacl_bootstrap_raw %{buildroot}%{_libdir}/xwalk/nacl_bootstrap_raw
 install -p -D src/out/Release/nacl_helper %{buildroot}%{_libdir}/xwalk/nacl_helper
 install -p -D src/out/Release/nacl_helper_bootstrap %{buildroot}%{_libdir}/xwalk/nacl_helper_bootstrap
@@ -262,17 +282,28 @@ install -p -D %{name}.png %{buildroot}%{_desktop_icondir}/%{name}.png
 mkdir -p %{_desktop_icondir_ro}
 mkdir -p %{_manifestdir_ro}
 
+ln -sf %{_libdir}/xwalk/libxwalk_backend_lib.so /etc/package-manager/backendlib/libxpk.so
+ln -sf %{_libdir}/xwalk/libxwalk_backend_lib.so /etc/package-manager/backendlib/libwgt.so
+ln -sf %{_libdir}/xwalk/xwalk_backend /etc/package-manager/backend/xpk
+ln -sf %{_libdir}/xwalk/xwalk_backend /etc/package-manager/backend/wgt
+
+%preun
+if [ $1 -eq 0 ] ; then
+ # don't remove if we are upgrade the rpm package
+[ -L /etc/package-manager/backendlib/libxpk.so ] && rm /etc/package-manager/backendlib/libxpk.so
+[ -L /etc/package-manager/backendlib/libwgt.so ] && rm /etc/package-manager/backendlib/libwgt.so
+[ -L /etc/package-manager/backend/xpk ] && rm /etc/package-manager/backend/xpk
+[ -L /etc/package-manager/backend/wgt ] && rm /etc/package-manager/backend/wgt
+fi
+
 %files
 %manifest %{name}.manifest
 %license AUTHORS.chromium LICENSE.chromium LICENSE.xwalk
 %{_bindir}/xwalkctl
 %{_bindir}/xwalk-launcher
-%{_bindir}/xwalk-pkg-helper
 %{_libdir}/xwalk/icudtl.dat
 %{_libdir}/xwalk/libffmpegsumo.so
 %if ! %{_disable_nacl}
-%{_libdir}/xwalk/libppGoogleNaClPluginChrome.so
-%{_libdir}/xwalk/nacl_bootstrap_munge_phdr
 %{_libdir}/xwalk/nacl_bootstrap_raw
 %{_libdir}/xwalk/nacl_helper
 %{_libdir}/xwalk/nacl_helper_bootstrap
@@ -281,7 +312,10 @@ mkdir -p %{_manifestdir_ro}
 %endif
 %{_libdir}/xwalk/xwalk
 %{_libdir}/xwalk/xwalk.pak
+%{_libdir}/xwalk/libxwalk_backend_lib.so
+%{_libdir}/xwalk/xwalk_backend
 %{_manifestdir}/%{name}.xml
 %{_desktop_icondir}/%{name}.png
 %{_dbusservicedir}/org.crosswalkproject.Runtime1.service
 %{_systemduserservicedir}/xwalk.service
+%{_datadir}/xwalk/*

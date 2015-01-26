@@ -26,9 +26,10 @@ UDPSocketObject::UDPSocketObject()
     : has_write_pending_(false),
       is_suspended_(false),
       is_reading_(false),
-      resolver_(net::HostResolver::CreateDefaultResolver(NULL)),
       read_buffer_(new net::IOBuffer(kBufferSize)),
       write_buffer_(new net::IOBuffer(kBufferSize)),
+      write_buffer_size_(0),
+      resolver_(net::HostResolver::CreateDefaultResolver(NULL)),
       single_resolver_(new net::SingleRequestHostResolver(resolver_.get())) {
   handler_.Register("init",
       base::Bind(&UDPSocketObject::OnInit, base::Unretained(this)));
@@ -54,7 +55,7 @@ void UDPSocketObject::DoRead() {
 
   is_reading_ = true;
 
-  int ret = socket_->RecvFrom(read_buffer_,
+  int ret = socket_->RecvFrom(read_buffer_.get(),
                               kBufferSize,
                               &from_,
                               base::Bind(&UDPSocketObject::OnRead,
@@ -252,7 +253,7 @@ void UDPSocketObject::OnSend(int status) {
   }
 
   int ret = socket_->SendTo(
-      write_buffer_,
+      write_buffer_.get(),
       write_buffer_size_,
       addresses_[0],
       base::Bind(&UDPSocketObject::OnWrite, base::Unretained(this)));
