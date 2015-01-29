@@ -11,28 +11,35 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Rect;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.Override;
+import java.lang.String;
 import java.lang.ref.WeakReference;
-
+import java.util.ArrayList;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApplicationStatus;
 import org.chromium.base.ApplicationStatus.ActivityStateListener;
 import org.chromium.base.CommandLine;
-
-import org.xwalk.core.internal.extension.XWalkExtensionManager;
-import org.xwalk.core.internal.extension.XWalkPathHelper;
+import org.xwalk.core.internal.extension.BuiltinXWalkExtensions;
 
 /**
  * <p>XWalkViewInternal represents an Android view for web apps/pages. Thus most of attributes
@@ -147,14 +154,17 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     static final String PLAYSTORE_DETAIL_URI = "market://details?id=";
+    public static final int INPUT_FILE_REQUEST_CODE = 1;
+    private static final String TAG = XWalkViewInternal.class.getSimpleName();
 
     private XWalkContent mContent;
     private Activity mActivity;
     private Context mContext;
-    private XWalkExtensionManager mExtensionManager;
     private boolean mIsHidden;
     private XWalkActivityStateListener mActivityStateListener;
-
+    private static final String TAG = XWalkViewInternal.class.getSimpleName();
+    private ValueCallback<Uri> mFilePathCallback;
+    private String mCameraPhotoPath;
     /**
      * Normal reload mode as default.
      * @since 1.0
@@ -177,15 +187,17 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     @XWalkAPI(preWrapperLines = {
                   "        super(${param1}, ${param2});"},
               postWrapperLines = {
+                  "        if (bridge == null) return;",
                   "        addView((FrameLayout)bridge, new FrameLayout.LayoutParams(",
                   "                FrameLayout.LayoutParams.MATCH_PARENT,",
                   "                FrameLayout.LayoutParams.MATCH_PARENT));"})
     public XWalkViewInternal(Context context, AttributeSet attrs) {
-        super(context, attrs);
+        super(convertContext(context), attrs);
 
         checkThreadSafety();
-        mContext = context;
-        init(context, attrs);
+        mActivity = (Activity) context;
+        mContext = getContext();
+        init(mContext, attrs);
     }
 
     /**
@@ -198,17 +210,31 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     @XWalkAPI(preWrapperLines = {
                   "        super(${param1}, null);"},
               postWrapperLines = {
+                  "        if (bridge == null) return;",
                   "        addView((FrameLayout)bridge, new FrameLayout.LayoutParams(",
                   "                FrameLayout.LayoutParams.MATCH_PARENT,",
                   "                FrameLayout.LayoutParams.MATCH_PARENT));"})
     public XWalkViewInternal(Context context, Activity activity) {
-        super(context, null);
-        checkThreadSafety();
+        super(convertContext(context), null);
 
+        checkThreadSafety();
         // Make sure mActivity is initialized before calling 'init' method.
         mActivity = activity;
-        mContext = context;
-        init(context, null);
+        mContext = getContext();
+        init(mContext, null);
+    }
+
+    private static Context convertContext(Context context) {
+        Context ret = context;
+        Context bridgeContext = ReflectionHelper.getBridgeContext();
+        if (bridgeContext == null || context == null ||
+                bridgeContext.getPackageName().equals(context.getPackageName())) {
+            // Not acrossing package
+            ret = context;
+        } else {
+            ret = new MixedContext(bridgeContext, context);
+        }
+        return ret;
     }
 
     /**
@@ -235,6 +261,10 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
      */
     public Context getViewContext() {
         return mContext;
+    }
+
+    public void completeWindowCreation(XWalkViewInternal newXWalkView) {
+        mContent.supplyContentsForPopup(newXWalkView == null ? null : newXWalkView.mContent);
     }
 
     private void init(Context context, AttributeSet attrs) {
@@ -347,10 +377,9 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         setNotificationService(new XWalkNotificationServiceImpl(context, this));
 
         if (!CommandLine.getInstance().hasSwitch("disable-xwalk-extensions")) {
-            // Enable xwalk extension mechanism and start load extensions here.
-            // Note that it has to be after above initialization.
-            mExtensionManager = new XWalkExtensionManager(context, getActivity());
-            mExtensionManager.loadExtensions();
+            BuiltinXWalkExtensions.load(context, getActivity());
+        } else {
+            XWalkPreferencesInternal.setValue(XWalkPreferencesInternal.ENABLE_EXTENSIONS, false);
         }
 
         XWalkPathHelper.initialize();
@@ -635,8 +664,28 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     @XWalkAPI
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (mContent == null) return;
-        if (null != mExtensionManager)
-                mExtensionManager.onActivityResult(requestCode, resultCode, data);
+        if(requestCode == INPUT_FILE_REQUEST_CODE && mFilePathCallback != null) {
+            Uri results = null;
+
+            // Check that the response is a good one
+            if(Activity.RESULT_OK == resultCode) {
+                if(data == null) {
+                    // If there is not data, then we may have taken a photo
+                    if(mCameraPhotoPath != null) {
+                        results = Uri.parse(mCameraPhotoPath);
+                    }
+                } else {
+                    String dataString = data.getDataString();
+                    if (dataString != null) {
+                        results = Uri.parse(dataString);
+                    }
+                }
+            }
+
+            mFilePathCallback.onReceiveValue(results);
+            mFilePathCallback = null;
+            return;
+        }
         mContent.onActivityResult(requestCode, resultCode, data);
     }
 
@@ -688,7 +737,7 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     // TODO(yongsheng): make it static?
     @XWalkAPI
     public String getAPIVersion() {
-        return "2.1";
+        return "4.1";
     }
 
     /**
@@ -733,11 +782,26 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     /**
      * @hide
      */
-    @XWalkAPI
     public org.xwalk.core.internal.XWalkSettings getSettings() {
         if (mContent == null) return null;
         checkThreadSafety();
         return mContent.getSettings();
+    }
+
+    @XWalkAPI
+    public String getUserAgent(){
+        if(getSettings() != null){
+            return getSettings().getUserAgentString();
+        } else {
+            return null;
+        }
+    }
+
+    @XWalkAPI
+    public void setUserAgent(String userAgent){
+        if(getSettings() != null){
+            getSettings().setUserAgentString(userAgent);
+        }
     }
 
     /**
@@ -754,17 +818,29 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     }
 
     /**
-     * Enables remote debugging and returns the URL at which the dev tools server is listening
-     * for commands. The allowedUid argument can be used to specify the uid of the process that is
-     * permitted to connect.
-     * TODO(yongsheng): how to enable this in XWalkPreferencesInternal?
-     *
-     * @hide
+     * Enables remote debugging and returns the URL at which the dev tools
+     * server is listening for commands.
      */
-    public String enableRemoteDebugging(int allowedUid) {
+    public void enableRemoteDebugging() {
+        if (mContent == null) return;
+        checkThreadSafety();
+        mContent.enableRemoteDebugging();
+    }
+
+    /**
+     * Get the websocket url for remote debugging.
+     * @return the web socket url to remote debug this xwalk view.
+     * null will be returned if remote debugging is not enabled.
+     * @since 4.1
+     */
+    @XWalkAPI
+    public Uri getRemoteDebuggingUrl() {
         if (mContent == null) return null;
         checkThreadSafety();
-        return mContent.enableRemoteDebugging(allowedUid);
+        String wsUrl = mContent.getRemoteDebuggingUrl();
+        if (wsUrl == null || wsUrl.isEmpty()) return null;
+
+        return Uri.parse(wsUrl);
     }
 
     /**
@@ -810,15 +886,8 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         if (mContent == null) return;
         ApplicationStatus.unregisterActivityStateListener(mActivityStateListener);
         mActivityStateListener = null;
-        if (null != mExtensionManager) mExtensionManager.onDestroy();
         mContent.destroy();
         disableRemoteDebugging();
-    }
-
-    // Enables remote debugging and returns the URL at which the dev tools server is listening
-    // for commands. Only the current process is allowed to connect to the server.
-    String enableRemoteDebugging() {
-        return enableRemoteDebugging(mContext.getApplicationInfo().uid);
     }
 
     void disableRemoteDebugging() {
@@ -924,25 +993,113 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         switch (newState) {
             case ActivityState.STARTED:
                 onShow();
-                if (null != mExtensionManager) mExtensionManager.onStart();
                 break;
             case ActivityState.PAUSED:
                 pauseTimers();
-                if (null != mExtensionManager) mExtensionManager.onPause();
                 break;
             case ActivityState.RESUMED:
                 resumeTimers();
-                if (null != mExtensionManager) mExtensionManager.onResume();
                 break;
             case ActivityState.DESTROYED:
                 onDestroy();
                 break;
             case ActivityState.STOPPED:
                 onHide();
-                if (null != mExtensionManager) mExtensionManager.onStop();
                 break;
             default:
                 break;
         }
+    }
+
+    @XWalkAPI
+    public void setDrawingCacheEnabled(boolean enabled){
+        mContent.setDrawingCacheEnabled(enabled);
+    }
+
+    @XWalkAPI
+    public Object getLastHitTestData(){
+        return mContent.getHitTestData().data();
+    }
+
+    @XWalkAPI
+    public Bitmap getDrawingCache(){
+        return mContent.getDrawingCache();
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        Log.d(TAG, "Touch Event occurred");
+        return mContent.onTouchEvent(event);
+    }
+
+    /**
+     * Tell the client to show a file chooser.
+     * @param uploadFile the callback class to handle the result from caller. It MUST
+     *        be invoked in all cases. Leave it not invoked will block all following
+     *        requests to open file chooser.
+     * @param acceptType value of the 'accept' attribute of the input tag associated
+     *        with this file picker.
+     * @param capture value of the 'capture' attribute of the input tag associated
+     *        with this file picker
+     */
+    public boolean showFileChooser(ValueCallback<Uri> uploadFile, String acceptType,
+            String capture) {
+        mFilePathCallback = uploadFile;
+
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (takePictureIntent.resolveActivity(getActivity().getPackageManager()) != null) {
+            // Create the File where the photo should go
+            File photoFile = null;
+            try {
+                photoFile = createImageFile();
+                takePictureIntent.putExtra("PhotoPath", mCameraPhotoPath);
+            } catch (IOException ex) {
+                // Error occurred while creating the File
+                Log.e(TAG, "Unable to create Image File", ex);
+            }
+
+            // Continue only if the File was successfully created
+            if (photoFile != null) {
+                mCameraPhotoPath = "file:" + photoFile.getAbsolutePath();
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT,
+                        Uri.fromFile(photoFile));
+            } else {
+                takePictureIntent = null;
+            }
+        }
+
+        Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
+        contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
+        contentSelectionIntent.setType("*/*");
+
+        Intent camcorder = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+        Intent soundRecorder = new Intent(
+                MediaStore.Audio.Media.RECORD_SOUND_ACTION);
+        ArrayList<Intent> extraIntents = new ArrayList<Intent>();
+        extraIntents.add(takePictureIntent);
+        extraIntents.add(camcorder);
+        extraIntents.add(soundRecorder);
+
+        Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
+        chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
+        chooserIntent.putExtra(Intent.EXTRA_TITLE, "Choose an action");
+        chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS,
+                extraIntents.toArray(new Intent[] { }));
+        getActivity().startActivityForResult(chooserIntent, INPUT_FILE_REQUEST_CODE);
+        return true;
+    }
+
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_PICTURES);
+        File imageFile = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+        return imageFile;
     }
 }

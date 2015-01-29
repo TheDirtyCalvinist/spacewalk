@@ -27,16 +27,30 @@ using content::WebContents;
 namespace {
 
 const char kTargetTypePage[] = "page";
+const char kTargetTypeServiceWorker[] = "service_worker";
+const char kTargetTypeOther[] = "other";
 
 class Target : public content::DevToolsTarget {
  public:
-  explicit Target(WebContents* web_contents);
+  explicit Target(scoped_refptr<content::DevToolsAgentHost> agent_host);
 
-  virtual std::string GetId() const OVERRIDE { return id_; }
-  virtual std::string GetType() const OVERRIDE { return kTargetTypePage; }
-  virtual std::string GetTitle() const OVERRIDE { return title_; }
+  virtual std::string GetId() const OVERRIDE { return agent_host_->GetId(); }
+  virtual std::string GetType() const OVERRIDE {
+      switch (agent_host_->GetType()) {
+        case content::DevToolsAgentHost::TYPE_WEB_CONTENTS:
+           return kTargetTypePage;
+         case content::DevToolsAgentHost::TYPE_SERVICE_WORKER:
+           return kTargetTypeServiceWorker;
+         default:
+           break;
+       }
+       return kTargetTypeOther;
+     }
+  virtual std::string GetTitle() const OVERRIDE {
+    return agent_host_->GetTitle();
+  }
   virtual std::string GetDescription() const OVERRIDE { return std::string(); }
-  virtual GURL GetURL() const OVERRIDE { return url_; }
+  virtual GURL GetURL() const OVERRIDE { return  agent_host_->GetURL(); }
   virtual GURL GetFaviconURL() const OVERRIDE { return favicon_url_; }
   virtual base::TimeTicks GetLastActivityTime() const OVERRIDE {
     return last_activity_time_;
@@ -55,43 +69,58 @@ class Target : public content::DevToolsTarget {
   scoped_refptr<DevToolsAgentHost> agent_host_;
   std::string id_;
   std::string title_;
-  GURL url_;
   GURL favicon_url_;
   base::TimeTicks last_activity_time_;
 };
 
-Target::Target(WebContents* web_contents) {
-  agent_host_ =
-      DevToolsAgentHost::GetOrCreateFor(web_contents);
-  id_ = agent_host_->GetId();
-  title_ = base::UTF16ToUTF8(web_contents->GetTitle());
-  url_ = web_contents->GetURL();
-  content::NavigationController& controller = web_contents->GetController();
-  content::NavigationEntry* entry = controller.GetActiveEntry();
-  if (entry != NULL && entry->GetURL().is_valid())
-    favicon_url_ = entry->GetFavicon().url;
-  last_activity_time_ = web_contents->GetLastActiveTime();
+Target::Target(scoped_refptr<content::DevToolsAgentHost> agent_host)
+    : agent_host_(agent_host) {
+  if (content::WebContents* web_contents = agent_host_->GetWebContents()) {
+    content::NavigationController& controller = web_contents->GetController();
+    content::NavigationEntry* entry = controller.GetActiveEntry();
+    if (entry != NULL && entry->GetURL().is_valid())
+      favicon_url_ = entry->GetFavicon().url;
+    last_activity_time_ = web_contents->GetLastActiveTime();
+  }
 }
 
 bool Target::Activate() const {
-  WebContents* web_contents = agent_host_->GetWebContents();
-  if (!web_contents)
-    return false;
-  web_contents->GetDelegate()->ActivateContents(web_contents);
-  return true;
+  return agent_host_->Activate();
 }
 
 bool Target::Close() const {
-  RenderViewHost* rvh = agent_host_->GetWebContents()->GetRenderViewHost();
-  if (!rvh)
-    return false;
-  rvh->ClosePage();
-  return true;
+  return agent_host_->Close();
 }
 
 }  // namespace
 
 namespace xwalk {
+
+XWalkDevToolsHttpHandlerDelegate::XWalkDevToolsHttpHandlerDelegate() {
+}
+
+XWalkDevToolsHttpHandlerDelegate::~XWalkDevToolsHttpHandlerDelegate() {
+}
+
+std::string XWalkDevToolsHttpHandlerDelegate::GetDiscoveryPageHTML() {
+  return ResourceBundle::GetSharedInstance().GetRawDataResource(
+      IDR_DEVTOOLS_FRONTEND_PAGE_HTML).as_string();
+}
+
+bool XWalkDevToolsHttpHandlerDelegate::BundlesFrontendResources() {
+  return true;
+}
+
+base::FilePath XWalkDevToolsHttpHandlerDelegate::GetDebugFrontendDir() {
+  return base::FilePath();
+}
+
+scoped_ptr<net::StreamListenSocket>
+XWalkDevToolsHttpHandlerDelegate::CreateSocketForTethering(
+    net::StreamListenSocket::Delegate* delegate,
+    std::string* name) {
+  return scoped_ptr<net::StreamListenSocket>();
+}
 
 XWalkDevToolsDelegate::XWalkDevToolsDelegate(RuntimeContext* runtime_context)
     : runtime_context_(runtime_context) {
@@ -100,17 +129,10 @@ XWalkDevToolsDelegate::XWalkDevToolsDelegate(RuntimeContext* runtime_context)
 XWalkDevToolsDelegate::~XWalkDevToolsDelegate() {
 }
 
-std::string XWalkDevToolsDelegate::GetDiscoveryPageHTML() {
-  return ResourceBundle::GetSharedInstance().GetRawDataResource(
-      IDR_DEVTOOLS_FRONTEND_PAGE_HTML).as_string();
-}
-
-bool XWalkDevToolsDelegate::BundlesFrontendResources() {
-  return true;
-}
-
-base::FilePath XWalkDevToolsDelegate::GetDebugFrontendDir() {
-  return base::FilePath();
+base::DictionaryValue* XWalkDevToolsDelegate::HandleCommand(
+    content::DevToolsAgentHost* agent_host,
+    base::DictionaryValue* command_dict) {
+  return NULL;
 }
 
 std::string XWalkDevToolsDelegate::GetPageThumbnailData(const GURL& url) {
@@ -122,28 +144,23 @@ XWalkDevToolsDelegate::CreateNewTarget(const GURL& url) {
   Runtime* runtime = Runtime::CreateWithDefaultWindow(
       runtime_context_, GURL(url::kAboutBlankURL));
   return scoped_ptr<content::DevToolsTarget>(
-      new Target(runtime->web_contents()));
+      new Target(DevToolsAgentHost::GetOrCreateFor(runtime->web_contents())));
 }
 
 void XWalkDevToolsDelegate::EnumerateTargets(TargetCallback callback) {
   TargetList targets;
-  std::vector<WebContents*> web_contents_list =
-      content::DevToolsAgentHost::GetInspectableWebContents();
-  for (std::vector<WebContents*>::iterator it = web_contents_list.begin();
-       it != web_contents_list.end();
-       ++it) {
-    Runtime* runtime = static_cast<Runtime*>((*it)->GetDelegate());
+  content::DevToolsAgentHost::List agents =
+      content::DevToolsAgentHost::GetOrCreateAll();
+  for (content::DevToolsAgentHost::List::iterator it = agents.begin();
+       it != agents.end(); ++it) {
+#if !defined(OS_ANDROID)
+    Runtime* runtime =
+        static_cast<Runtime*>((*it)->GetWebContents()->GetDelegate());
     if (runtime && runtime->remote_debugging_enabled())
+#endif
       targets.push_back(new Target(*it));
   }
   callback.Run(targets);
-}
-
-scoped_ptr<net::StreamListenSocket>
-XWalkDevToolsDelegate::CreateSocketForTethering(
-      net::StreamListenSocket::Delegate* delegate,
-      std::string* name) {
-  return scoped_ptr<net::StreamListenSocket>();
 }
 
 }  // namespace xwalk

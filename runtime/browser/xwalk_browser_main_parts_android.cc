@@ -19,13 +19,13 @@
 #include "content/public/browser/cookie_store_factory.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
-#include "grit/net_resources.h"
 #include "net/android/network_change_notifier_factory_android.h"
 #include "net/base/network_change_notifier.h"
 #include "net/base/net_module.h"
 #include "net/base/net_util.h"
 #include "net/cookies/cookie_monster.h"
 #include "net/cookies/cookie_store.h"
+#include "net/grit/net_resources.h"
 #include "ui/base/layout.h"
 #include "ui/base/l10n/l10n_util_android.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -50,6 +50,31 @@ base::StringPiece PlatformResourceProvider(int key) {
   return base::StringPiece();
 }
 
+void MoveUserDataDirIfNecessary(const base::FilePath& user_data_dir,
+                                const base::FilePath& profile) {
+  if (base::DirectoryExists(profile))
+    return;
+
+  if (!base::CreateDirectory(profile))
+    return;
+
+  const char* possible_data_dir_names[] = {
+      "Cache",
+      "Cookies",
+      "Cookies-journal",
+      "Local Storage",
+  };
+  for (int i = 0; i < 4; i++) {
+    base::FilePath dir = user_data_dir.Append(possible_data_dir_names[i]);
+    if (base::PathExists(dir)) {
+      if (!base::Move(dir, profile.Append(possible_data_dir_names[i]))) {
+        NOTREACHED() << "Failed to import previous user data: "
+                     << possible_data_dir_names[i];
+      }
+    }
+  }
+}
+
 }  // namespace
 
 namespace xwalk {
@@ -68,6 +93,10 @@ XWalkBrowserMainPartsAndroid::~XWalkBrowserMainPartsAndroid() {
 void XWalkBrowserMainPartsAndroid::PreEarlyInitialization() {
   net::NetworkChangeNotifier::SetFactory(
       new net::NetworkChangeNotifierFactoryAndroid());
+  // As Crosswalk uses in-process mode, that's easier than Chromium
+  // to reach the default limit(1024) of open files per process on
+  // Android. So increase the limit to 4096 explicitly.
+  base::SetFdLimit(4096);
 
   CommandLine::ForCurrentProcess()->AppendSwitch(
       cc::switches::kCompositeToMailbox);
@@ -100,11 +129,7 @@ void XWalkBrowserMainPartsAndroid::PreMainMessageLoopStart() {
   command_line->AppendSwitch(switches::kDisableWebRtcHWEncoding);
 #endif
 
-  // For fullscreen video playback, the ContentVideoView is still buggy, so
-  // we switch back to ContentVideoViewLegacy for temp.
-  // TODO(shouqun): Remove this flag when ContentVideoView is ready.
-  command_line->AppendSwitch(
-      switches::kDisableOverlayFullscreenVideoSubtitle);
+  command_line->AppendSwitch(switches::kEnableViewportMeta);
 
   XWalkBrowserMainParts::PreMainMessageLoopStart();
 
@@ -133,9 +158,12 @@ void XWalkBrowserMainPartsAndroid::PreMainMessageLoopRun() {
     NOTREACHED() << "Failed to get app data directory for Crosswalk";
   }
   CommandLine* command_line = CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(switches::kXWalkProfileName))
-    user_data_dir = user_data_dir.Append(
+  if (command_line->HasSwitch(switches::kXWalkProfileName)) {
+    base::FilePath profile = user_data_dir.Append(
         command_line->GetSwitchValuePath(switches::kXWalkProfileName));
+    MoveUserDataDirIfNecessary(user_data_dir, profile);
+    user_data_dir = profile;
+  }
 
   base::FilePath cookie_store_path = user_data_dir.Append(
       FILE_PATH_LITERAL("Cookies"));

@@ -55,8 +55,10 @@ class WidgetHandlerTest: public testing::Test {
     const base::DictionaryValue& manifest) {
     std::string error;
     scoped_refptr<ApplicationData> application = ApplicationData::Create(
-        base::FilePath(), ApplicationData::LOCAL_DIRECTORY,
-        manifest, "", &error);
+        base::FilePath(), std::string(), ApplicationData::LOCAL_DIRECTORY,
+        make_scoped_ptr(new Manifest(make_scoped_ptr(manifest.DeepCopy()),
+                                     Manifest::TYPE_WIDGET)),
+        &error);
     return application;
   }
 
@@ -125,7 +127,7 @@ TEST_F(WidgetHandlerTest, ParseManifestWithOnlyNameAndVersion) {
   manifest.SetString(keys::kVersionKey, "0");
 
   scoped_refptr<ApplicationData> application = CreateApplication(manifest);
-  EXPECT_TRUE(application);
+  EXPECT_TRUE(application.get());
 
   WidgetInfo* info = GetWidgetInfo(application);
   int size = info->GetWidgetInfo()->size();
@@ -161,8 +163,8 @@ TEST_F(WidgetHandlerTest,
   // Create an application use this manifest.
   scoped_refptr<ApplicationData> application;
   application = CreateApplication(*(manifest.get()));
-  EXPECT_TRUE(application);
-  EXPECT_EQ(application->GetPackageType(), Package::WGT);
+  EXPECT_TRUE(application.get());
+  EXPECT_EQ(application->manifest_type(), Manifest::TYPE_WIDGET);
   // Get widget info from this application.
   WidgetInfo* info = GetWidgetInfo(application);
   EXPECT_TRUE(info);
@@ -193,8 +195,8 @@ TEST_F(WidgetHandlerTest,
   // Create an application use this manifest,
   scoped_refptr<ApplicationData> application;
   application = CreateApplication(*(manifest.get()));
-  EXPECT_TRUE(application);
-  EXPECT_EQ(application->GetPackageType(), Package::WGT);
+  EXPECT_TRUE(application.get());
+  EXPECT_EQ(application->manifest_type(), Manifest::TYPE_WIDGET);
   // Get widget info from this application.
   WidgetInfo* info = GetWidgetInfo(application);
   EXPECT_TRUE(info);

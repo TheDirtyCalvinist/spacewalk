@@ -20,10 +20,10 @@
 #include "base/strings/string_util.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
-#include "base/time/time.h"
 #include "url/gurl.h"
 #include "xwalk/application/common/manifest.h"
 #include "xwalk/application/common/permission_types.h"
+#include "xwalk/application/common/package/package.h"
 
 namespace base {
 class DictionaryValue;
@@ -66,16 +66,9 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
     virtual ~ManifestData() {}
   };
 
-  static scoped_refptr<ApplicationData> Create(const base::FilePath& path,
-      SourceType source_type,
-      const base::DictionaryValue& manifest_data,
-      const std::string& explicit_id,
-      std::string* error_message);
-
-  static scoped_refptr<ApplicationData> Create(const GURL& url,
-                                               std::string* error_message);
-
-  Manifest::Type GetType() const;
+  static scoped_refptr<ApplicationData> Create(const base::FilePath& app_path,
+      const std::string& explicit_id, SourceType source_type,
+          scoped_ptr<Manifest> manifest, std::string* error_message);
 
   // Returns an absolute url to a resource inside of an application. The
   // |application_url| argument should be the url() from an Application object.
@@ -84,9 +77,7 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
   // NOTE: Static so that it can be used from multiple threads.
   static GURL GetResourceURL(const GURL& application_url,
                              const std::string& relative_path);
-  GURL GetResourceURL(const std::string& relative_path) const {
-    return GetResourceURL(URL(), relative_path);
-  }
+  GURL GetResourceURL(const std::string& relative_path) const;
 
   // Returns the base application url for a given |application_id|.
   static GURL GetBaseURLFromApplicationId(const std::string& application_id);
@@ -101,12 +92,14 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
   void SetManifestData(const std::string& key, ManifestData* data);
 
   // Accessors:
-
-  const base::FilePath& Path() const { return path_; }
-  void SetPath(const base::FilePath& path) { path_ = path; }
+  const base::FilePath& path() const { return path_; }
+#if defined(OS_TIZEN)  // FIXME : This method should be removed.
+  void set_path(const base::FilePath& path) { path_ = path; }
+#endif
   const GURL& URL() const { return application_url_; }
   SourceType source_type() const { return source_type_; }
-  const std::string& ID() const;
+  Manifest::Type manifest_type() const { return manifest_->type(); }
+  const std::string& ID() const { return application_id_; }
 #if defined(OS_TIZEN)
   std::string GetPackageID() const;
 #endif
@@ -120,8 +113,6 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
     return manifest_.get();
   }
 
-  const base::Time& install_time() const { return install_time_; }
-
   // App-related.
   bool IsHostedApp() const;
 
@@ -133,8 +124,6 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
   void ClearPermissions();
   PermissionSet GetManifestPermissions() const;
 
-  Package::Type GetPackageType() const { return package_type_; }
-
   bool HasCSPDefined() const;
 
   bool SetApplicationLocale(const std::string& locale, base::string16* error);
@@ -143,8 +132,8 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
   friend class base::RefCountedThreadSafe<ApplicationData>;
   friend class ApplicationStorageImpl;
 
-  ApplicationData(const base::FilePath& path, SourceType source_type,
-                  scoped_ptr<Manifest> manifest);
+  ApplicationData(const base::FilePath& path,
+      SourceType source_type, scoped_ptr<Manifest> manifest);
   virtual ~ApplicationData();
 
   // Initialize the application from a parsed manifest.
@@ -180,12 +169,10 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
   // The absolute path to the directory the application is stored in.
   base::FilePath path_;
 
-  // System events
-  std::set<std::string> events_;
-
-  // If it's true, means the data have been changed,
-  // and need to save in database.
-  bool is_dirty_;
+  // A persistent, globally unique ID. An application's ID is used in things
+  // like directory structures and URLs, and is expected to not change across
+  // versions.
+  std::string application_id_;
 
   // The base application url for the application.
   GURL application_url_;
@@ -205,8 +192,6 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
   // Set to true at the end of InitValue when initialization is finished.
   bool finished_parsing_manifest_;
 
-  base::Time install_time_;
-
   // Ensures that any call to GetManifestData() prior to finishing
   // initialization happens from the same thread (this can happen when certain
   // parts of the initialization process need information from previous parts).
@@ -214,9 +199,6 @@ class ApplicationData : public base::RefCountedThreadSafe<ApplicationData> {
 
   // Application's persistent permissions.
   StoredPermissionMap permission_map_;
-
-  // The package type, wgt or xpk.
-  Package::Type package_type_;
 
   // The source the application was loaded from.
   SourceType source_type_;

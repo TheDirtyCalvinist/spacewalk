@@ -101,6 +101,7 @@ const char kAccessOriginKey[] = "@origin";
 const char kAccessSubdomainsKey[] = "@subdomains";
 
 #if defined(OS_TIZEN)
+const char kTizenWidgetKey[] = "widget";
 const char kIcon128Key[] = "widget.icon.@src";
 const char kTizenApplicationKey[] = "widget.application";
 // Child keys inside 'kTizenApplicationKey'
@@ -113,7 +114,9 @@ const char kAllowNavigationKey[] = "widget.allow-navigation.#text";
 const char kCSPReportOnlyKey[] =
     "widget.content-security-policy-report-only.#text";
 const char kTizenSettingKey[] = "widget.setting";
+const char kTizenContextMenuKey[] = "widget.setting.@context-menu";
 const char kTizenHardwareKey[] = "widget.setting.@hwkey-event";
+const char kTizenEncryptionKey[] = "widget.setting.@encryption";
 const char kTizenMetaDataKey[] = "widget.metadata";
 // Child keys inside 'kTizenMetaDataKey'
 const char kTizenMetaDataNameKey[] = "@key";
@@ -121,6 +124,30 @@ const char kTizenMetaDataValueKey[] = "@value";
 const char kTizenSplashScreenKey[] = "widget.splash-screen";
 const char kTizenSplashScreenSrcKey[] = "@src";
 const char kContentNamespace[] = "widget.content.@namespace";
+const char kTizenScreenOrientationKey[] = "widget.setting.@screen-orientation";
+const char kTizenAppWidgetFullKey[] = "widget.app-widget";
+const char kTizenAppWidgetKey[] = "app-widget";
+const char kTizenAppWidgetIdKey[] = "@id";
+const char kTizenAppWidgetPrimaryKey[] = "@primary";
+const char kTizenAppWidgetUpdatePeriodKey[] = "@update-period";
+const char kTizenAppWidgetAutoLaunchKey[] = "@auto-launch";
+const char kTizenAppWidgetBoxLabelKey[] = "box-label";
+const char kTizenAppWidgetBoxLabelLangKey[] = "@lang";
+const char kTizenAppWidgetBoxLabelTextKey[] = "#text";
+const char kTizenAppWidgetBoxIconKey[] = "box-icon";
+const char kTizenAppWidgetBoxIconSrcKey[] = "@src";
+const char kTizenAppWidgetBoxContentKey[] = "box-content";
+const char kTizenAppWidgetBoxContentSrcKey[] = "@src";
+const char kTizenAppWidgetBoxContentMouseEventKey[] = "@mouse-event";
+const char kTizenAppWidgetBoxContentTouchEffectKey[] = "@touch-effect";
+const char kTizenAppWidgetBoxContentSizeKey[] = "box-size";
+const char kTizenAppWidgetBoxContentSizeTextKey[] = "#text";
+const char kTizenAppWidgetBoxContentSizePreviewKey[] = "@preview";
+const char kTizenAppWidgetBoxContentSizeUseDecorationKey[] = "@use-decoration";
+const char kTizenAppWidgetBoxContentDropViewKey[] = "pd";
+const char kTizenAppWidgetBoxContentDropViewSrcKey[] = "@src";
+const char kTizenAppWidgetBoxContentDropViewWidthKey[] = "@width";
+const char kTizenAppWidgetBoxContentDropViewHeightKey[] = "@height";
 #endif
 
 }  // namespace application_widget_keys
@@ -147,44 +174,37 @@ const char kManifestUnreadable[] =
 
 namespace application {
 
-const char* GetNameKey(Package::Type package_type) {
-  if (package_type == Package::WGT)
+const char* GetNameKey(Manifest::Type manifest_type) {
+  if (manifest_type == Manifest::TYPE_WIDGET)
     return application_widget_keys::kNameKey;
 
   return application_manifest_keys::kNameKey;
 }
 
-const char* GetVersionKey(Package::Type package_type) {
-  if (package_type == Package::WGT)
+const char* GetVersionKey(Manifest::Type manifest_type) {
+  if (manifest_type == Manifest::TYPE_WIDGET)
     return application_widget_keys::kVersionKey;
 
   return application_manifest_keys::kXWalkVersionKey;
 }
 
-const char* GetLaunchLocalPathKey(Package::Type package_type) {
-  if (package_type == Package::WGT)
-    return application_widget_keys::kLaunchLocalPathKey;
-
-  return application_manifest_keys::kLaunchLocalPathKey;
-}
-
-const char* GetCSPKey(Package::Type package_type) {
-  if (package_type == Package::WGT)
+const char* GetCSPKey(Manifest::Type manifest_type) {
+  if (manifest_type == Manifest::TYPE_WIDGET)
     return application_widget_keys::kCSPKey;
 
   return application_manifest_keys::kCSPKey;
 }
 
 #if defined(OS_TIZEN)
-const char* GetTizenAppIdKey(Package::Type package_type) {
-  if (package_type == Package::WGT)
+const char* GetTizenAppIdKey(Manifest::Type manifest_type) {
+  if (manifest_type == Manifest::TYPE_WIDGET)
     return application_widget_keys::kTizenAppIdKey;
 
   return application_manifest_keys::kTizenAppIdKey;
 }
 
-const char* GetIcon128Key(Package::Type package_type) {
-  if (package_type == Package::WGT)
+const char* GetIcon128Key(Manifest::Type manifest_type) {
+  if (manifest_type == Manifest::TYPE_WIDGET)
     return application_widget_keys::kIcon128Key;
 
   return application_manifest_keys::kIcon128Key;

@@ -4,78 +4,48 @@
 
 #include "xwalk/application/browser/application_service.h"
 
+#if defined(OS_MACOSX)
+#include <ext/hash_set>
+#else
+#include <hash_set>
+#endif
 #include <set>
 #include <string>
 #include <vector>
 
-#include "base/containers/hash_tables.h"
-#include "base/files/file_enumerator.h"
 #include "base/file_util.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/message_loop/message_loop.h"
-#include "base/path_service.h"
+#include "base/strings/utf_string_conversions.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "xwalk/application/browser/application.h"
-#include "xwalk/application/browser/application_system.h"
-#include "xwalk/application/common/application_storage.h"
-#include "xwalk/application/common/installer/package.h"
-#include "xwalk/application/common/installer/package_installer.h"
+#include "xwalk/application/common/application_manifest_constants.h"
 #include "xwalk/application/common/application_file_util.h"
+#include "xwalk/application/common/id_util.h"
 #include "xwalk/runtime/browser/runtime_context.h"
 #include "xwalk/runtime/browser/runtime.h"
-#include "xwalk/runtime/browser/xwalk_runner.h"
 #include "xwalk/runtime/common/xwalk_paths.h"
 
 #if defined(OS_TIZEN)
-#include "xwalk/application/browser/application_tizen.h"
+#include "xwalk/application/browser/application_service_tizen.h"
 #endif
 
 namespace xwalk {
 
 namespace application {
 
-namespace {
+ApplicationService::ApplicationService(RuntimeContext* runtime_context)
+  : runtime_context_(runtime_context) {
+}
 
-const base::FilePath::CharType kApplicationDataDirName[] =
-    FILE_PATH_LITERAL("Storage/ext");
-
-base::FilePath GetStoragePartitionPath(
-    const base::FilePath& base_path, const std::string& app_id) {
-#if defined(OS_WIN)
-  std::wstring application_id(app_id.begin(), app_id.end());
-  return base_path.Append(kApplicationDataDirName).Append(application_id);
+scoped_ptr<ApplicationService> ApplicationService::Create(
+    RuntimeContext* runtime_context) {
+#if defined(OS_TIZEN)
+  return make_scoped_ptr<ApplicationService>(
+    new ApplicationServiceTizen(runtime_context));
 #else
-  return base_path.Append(kApplicationDataDirName).Append(app_id);
+  return make_scoped_ptr(new ApplicationService(runtime_context));
 #endif
-}
-
-void CollectUnusedStoragePartitions(RuntimeContext* context,
-                                    ApplicationStorage* storage) {
-  std::vector<std::string> app_ids;
-  if (!storage->GetInstalledApplicationIDs(app_ids))
-    return;
-
-  scoped_ptr<base::hash_set<base::FilePath> > active_paths(
-      new base::hash_set<base::FilePath>()); // NOLINT
-
-  for (unsigned i = 0; i < app_ids.size(); ++i) {
-    active_paths->insert(
-        GetStoragePartitionPath(context->GetPath(), app_ids.at(i)));
-  }
-
-  content::BrowserContext::GarbageCollectStoragePartitions(
-      context, active_paths.Pass(), base::Bind(&base::DoNothing));
-}
-
-}  // namespace
-
-ApplicationService::ApplicationService(RuntimeContext* runtime_context,
-                                       ApplicationStorage* app_storage)
-    : runtime_context_(runtime_context),
-      application_storage_(app_storage) {
-  CollectUnusedStoragePartitions(runtime_context, app_storage);
 }
 
 ApplicationService::~ApplicationService() {
@@ -92,14 +62,8 @@ Application* ApplicationService::Launch(
     return NULL;
   }
 
-#if defined(OS_TIZEN)
-  Application* application(new ApplicationTizen(application_data,
-    runtime_context_, this));
-#else
-  Application* application(new Application(application_data,
-    runtime_context_, this));
-#endif
-
+  Application* application = Application::Create(application_data,
+    runtime_context_).release();
   ScopedVector<Application>::iterator app_iter =
       applications_.insert(applications_.end(), application);
 
@@ -108,58 +72,109 @@ Application* ApplicationService::Launch(
     return NULL;
   }
 
+  application->set_observer(this);
+
   FOR_EACH_OBSERVER(Observer, observers_,
                     DidLaunchApplication(application));
 
   return application;
 }
 
-Application* ApplicationService::Launch(
-    const std::string& id, const Application::LaunchParams& params) {
-  scoped_refptr<ApplicationData> application_data =
-    application_storage_->GetApplicationData(id);
-  if (!application_data) {
-    LOG(ERROR) << "Application with id " << id << " is not installed.";
+Application* ApplicationService::LaunchFromManifestPath(
+    const base::FilePath& path, Manifest::Type manifest_type,
+        const Application::LaunchParams& params) {
+  std::string error;
+  scoped_ptr<Manifest> manifest = LoadManifest(path, manifest_type, &error);
+  if (!manifest) {
+    LOG(ERROR) << "Failed to load manifest.";
+    return NULL;
+  }
+
+  base::FilePath app_path = path.DirName();
+  LOG(ERROR) << "Loading app from " << app_path.MaybeAsASCII();
+
+  scoped_refptr<ApplicationData> application_data = ApplicationData::Create(
+      app_path, std::string(), ApplicationData::LOCAL_DIRECTORY,
+      manifest.Pass(), &error);
+  if (!application_data.get()) {
+    LOG(ERROR) << "Error occurred while trying to load application: "
+               << error;
     return NULL;
   }
 
   return Launch(application_data, params);
 }
 
-Application* ApplicationService::Launch(
+Application* ApplicationService::LaunchFromPackagePath(
     const base::FilePath& path, const Application::LaunchParams& params) {
-  std::string error;
-  scoped_refptr<ApplicationData> application_data;
-  if (base::DirectoryExists(path)) {
-    application_data =
-        LoadApplication(path, ApplicationData::LOCAL_DIRECTORY, &error);
-    return Launch(application_data, params);
-  }
-
   scoped_ptr<Package> package = Package::Create(path);
-  if (package && package->IsValid()) {
-    base::FilePath tmp_dir, target_dir;
-    if (!GetTempDir(&tmp_dir)) {
-      LOG(ERROR) << "Failed to obtain system temp directory.";
-      return NULL;
-    }
-
-    base::CreateTemporaryDirInDir(tmp_dir, package->name(), &target_dir);
-    if (package->ExtractTo(target_dir)) {
-      std::string id = tmp_dir.BaseName().AsUTF8Unsafe();
-      application_data =
-          LoadApplication(
-              target_dir, id, ApplicationData::TEMP_DIRECTORY, &error);
-    }
+  if (!package || !package->IsValid()) {
+    LOG(ERROR) << "Failed to obtain valid package from "
+               << path.AsUTF8Unsafe();
+    return NULL;
   }
 
-  if (!application_data) {
-    LOG(ERROR) << "Error occurred while trying to launch application: "
+  base::FilePath tmp_dir, target_dir;
+  if (!GetTempDir(&tmp_dir)) {
+    LOG(ERROR) << "Failed to obtain system temp directory.";
+    return NULL;
+  }
+
+#if defined (OS_WIN)
+  base::CreateTemporaryDirInDir(tmp_dir,
+      base::UTF8ToWide(package->name()), &target_dir);
+#else
+  base::CreateTemporaryDirInDir(tmp_dir, package->name(), &target_dir);
+#endif
+  if (!package->ExtractTo(target_dir)) {
+    LOG(ERROR) << "Failed to unpack to a temporary directory: "
+               << target_dir.MaybeAsASCII();
+    return NULL;
+  }
+
+  std::string error;
+  scoped_refptr<ApplicationData> application_data = LoadApplication(
+      target_dir, std::string(), ApplicationData::TEMP_DIRECTORY,
+      package->manifest_type(), &error);
+  if (!application_data.get()) {
+    LOG(ERROR) << "Error occurred while trying to load application: "
                << error;
     return NULL;
   }
 
   return Launch(application_data, params);
+}
+
+// Launch an application created from arbitrary url.
+// FIXME: This application should have the same strict permissions
+// as common browser apps.
+Application* ApplicationService::LaunchHostedURL(
+    const GURL& url, const Application::LaunchParams& params) {
+  const std::string& url_spec = url.spec();
+  if (url_spec.empty()) {
+      LOG(ERROR) << "Failed to launch application from the URL: " << url;
+      return NULL;
+  }
+
+  const std::string& app_id = GenerateId(url_spec);
+
+  scoped_ptr<base::DictionaryValue> settings(new base::DictionaryValue());
+  // FIXME: define permissions!
+  settings->SetString(application_manifest_keys::kStartURLKey, url_spec);
+  // FIXME: Why use URL as name?
+  settings->SetString(application_manifest_keys::kNameKey, url_spec);
+  settings->SetString(application_manifest_keys::kXWalkVersionKey, "0");
+
+  scoped_ptr<Manifest> manifest(
+      new Manifest(settings.Pass(), Manifest::TYPE_MANIFEST));
+
+  std::string error;
+  scoped_refptr<ApplicationData> app_data =
+        ApplicationData::Create(base::FilePath(), app_id,
+        ApplicationData::EXTERNAL_URL, manifest.Pass(), &error);
+  DCHECK(app_data.get());
+
+  return Launch(app_data, params);
 }
 
 namespace {
@@ -222,10 +237,16 @@ void ApplicationService::OnApplicationTerminated(
 
   if (app_data->source_type() == ApplicationData::TEMP_DIRECTORY) {
       LOG(INFO) << "Deleting the app temporary directory "
-                << app_data->Path().AsUTF8Unsafe();
+                << app_data->path().AsUTF8Unsafe();
       content::BrowserThread::PostTask(content::BrowserThread::FILE,
           FROM_HERE, base::Bind(base::IgnoreResult(&base::DeleteFile),
-                                app_data->Path(), true /*recursive*/));
+                                app_data->path(), true /*recursive*/));
+      // FIXME: So far we simply clean up all the app persistent data,
+      // further we need to add an appropriate logic to handle it.
+      content::BrowserContext::GarbageCollectStoragePartitions(
+          runtime_context_,
+          make_scoped_ptr(new base::hash_set<base::FilePath>()),
+          base::Bind(&base::DoNothing));
   }
 
 #if !defined(SHARED_PROCESS_MODE)

@@ -18,15 +18,16 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/site_instance.h"
 #include "net/base/net_util.h"
-#include "xwalk/application/browser/application_service.h"
-#include "xwalk/application/browser/application_system.h"
-#include "xwalk/application/common/application_storage.h"
 #include "xwalk/application/common/application_manifest_constants.h"
 #include "xwalk/application/common/constants.h"
 #include "xwalk/application/common/manifest_handlers/warp_handler.h"
 #include "xwalk/runtime/browser/runtime.h"
 #include "xwalk/runtime/browser/runtime_context.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
+
+#if defined(OS_TIZEN)
+#include "xwalk/application/browser/application_tizen.h"
+#endif
 
 using content::RenderProcessHost;
 
@@ -47,7 +48,7 @@ GURL GetDefaultWidgetEntryPage(
     scoped_refptr<xwalk::application::ApplicationData> data) {
   base::ThreadRestrictions::SetIOAllowed(true);
   base::FileEnumerator iter(
-      data->Path(), true,
+      data->path(), true,
       base::FileEnumerator::FILES,
       FILE_PATH_LITERAL("index.*"));
   size_t priority = arraysize(kDefaultWidgetEntryPage);
@@ -70,22 +71,30 @@ GURL GetDefaultWidgetEntryPage(
 
 namespace application {
 
+scoped_ptr<Application> Application::Create(
+    scoped_refptr<ApplicationData> data,
+    RuntimeContext* context) {
+#if defined(OS_TIZEN)
+  return make_scoped_ptr<Application>(new ApplicationTizen(data, context));
+#else
+  return make_scoped_ptr(new Application(data, context));
+#endif
+}
+
 Application::Application(
     scoped_refptr<ApplicationData> data,
-    RuntimeContext* runtime_context,
-    Observer* observer)
+    RuntimeContext* runtime_context)
     : data_(data),
       render_process_host_(NULL),
       web_contents_(NULL),
       security_mode_enabled_(false),
       runtime_context_(runtime_context),
-      observer_(observer),
-      entry_point_used_(Default),
+      observer_(NULL),
+      window_show_state_(ui::SHOW_STATE_DEFAULT),
       remote_debugging_enabled_(false),
       weak_factory_(this) {
   DCHECK(runtime_context_);
   DCHECK(data_.get());
-  DCHECK(observer_);
 }
 
 Application::~Application() {
@@ -94,90 +103,69 @@ Application::~Application() {
     render_process_host_->RemoveObserver(this);
 }
 
-bool Application::Launch(const LaunchParams& launch_params) {
-  if (!runtimes_.empty()) {
-    LOG(ERROR) << "Attempt to launch app: " << id()
-               << " that was already launched.";
-    return false;
+template<>
+GURL Application::GetStartURL<Manifest::TYPE_WIDGET>() {
+#if defined(OS_TIZEN)
+  if (data_->IsHostedApp()) {
+    std::string source;
+    GURL url;
+    if (data_->GetManifest()->GetString(
+        widget_keys::kLaunchLocalPathKey, &source)) {
+      url = GURL(source);
+    }
+
+    if (url.is_valid() && url.SchemeIsHTTPOrHTTPS())
+      return url;
   }
+#endif
 
-  CHECK(!render_process_host_);
+  GURL url = GetAbsoluteURLFromKey(widget_keys::kLaunchLocalPathKey);
+  if (url.is_valid())
+    return url;
 
-  GURL url = GetStartURL(launch_params, &entry_point_used_);
-  if (!url.is_valid())
-    return false;
+  LOG(WARNING) << "Failed to find start URL from the 'config.xml'"
+               << "trying to find default entry page.";
+  url = GetDefaultWidgetEntryPage(data_);
+  if (url.is_valid())
+    return url;
 
-  remote_debugging_enabled_ = launch_params.remote_debugging;
-
-  Runtime* runtime = Runtime::Create(
-      runtime_context_,
-      this, content::SiteInstance::CreateForURL(runtime_context_, url));
-  render_process_host_ = runtime->GetRenderProcessHost();
-  render_process_host_->AddObserver(this);
-  web_contents_ = runtime->web_contents();
-  InitSecurityPolicy();
-  runtime->LoadURL(url);
-
-  NativeAppWindow::CreateParams params;
-  params.net_wm_pid = launch_params.launcher_pid;
-  if (data_->GetPackageType() == Package::WGT)
-    params.state = GetWindowShowStateWGT(launch_params);
-  else
-    params.state = GetWindowShowStateXPK(launch_params);
-
-  params.splash_screen_path = GetSplashScreenPath();
-
-  runtime->AttachWindow(params);
-
-  return true;
+  LOG(WARNING) << "Failed to find a valid start URL in the manifest.";
+  return GURL();
 }
 
-GURL Application::GetStartURL(const LaunchParams& params,
-    LaunchEntryPoint* used) {
-  if (params.entry_points & StartURLKey) {
-    GURL url = GetAbsoluteURLFromKey(keys::kStartURLKey);
-    if (url.is_valid()) {
-      *used = StartURLKey;
-      return url;
-    }
+template<>
+GURL Application::GetStartURL<Manifest::TYPE_MANIFEST>() {
+  if (data_->IsHostedApp()) {
+    std::string source;
+    // Not trying to get a relative path for the "fake" application.
+    if (data_->GetManifest()->GetString(keys::kStartURLKey, &source))
+      return GURL(source);
+    return GURL();
   }
 
-  if (params.entry_points & LaunchLocalPathKey) {
-    GURL url = GetAbsoluteURLFromKey(
-        GetLaunchLocalPathKey(data_->GetPackageType()));
+  GURL url = GetAbsoluteURLFromKey(keys::kStartURLKey);
+  if (url.is_valid())
+    return url;
 
-    if (!url.is_valid() && data_->GetPackageType() == Package::WGT)
-      url = GetDefaultWidgetEntryPage(data_);
+  url = GetAbsoluteURLFromKey(keys::kLaunchLocalPathKey);
+  if (url.is_valid())
+    return url;
 
-    if (url.is_valid()) {
-#if defined(OS_TIZEN)
-      if (data_->IsHostedApp() && !url.SchemeIsHTTPOrHTTPS()) {
-        LOG(ERROR) << "Hosted application should use the url start with"
-                      "http or https as its entry page.";
-        return GURL();
-      }
-#endif
-      *used = LaunchLocalPathKey;
-      return url;
-    }
-  }
-
-  if (params.entry_points & URLKey) {
+  url = GetAbsoluteURLFromKey(keys::kDeprecatedURLKey);
+  if (url.is_valid()) {
     LOG(WARNING) << "Deprecated key '" << keys::kDeprecatedURLKey
         << "' found. Please migrate to using '" << keys::kStartURLKey
         << "' instead.";
-    GURL url = GetAbsoluteURLFromKey(keys::kDeprecatedURLKey);
-    if (url.is_valid()) {
-      *used = URLKey;
-      return url;
-    }
+    return url;
   }
 
   LOG(WARNING) << "Failed to find a valid start URL in the manifest.";
   return GURL();
 }
 
-ui::WindowShowState Application::GetWindowShowStateWGT(
+
+template<>
+ui::WindowShowState Application::GetWindowShowState<Manifest::TYPE_WIDGET>(
     const LaunchParams& params) {
   if (params.force_fullscreen)
     return ui::SHOW_STATE_FULLSCREEN;
@@ -197,7 +185,8 @@ ui::WindowShowState Application::GetWindowShowStateWGT(
   return ui::SHOW_STATE_DEFAULT;
 }
 
-ui::WindowShowState Application::GetWindowShowStateXPK(
+template<>
+ui::WindowShowState Application::GetWindowShowState<Manifest::TYPE_MANIFEST>(
     const LaunchParams& params) {
   if (params.force_fullscreen)
     return ui::SHOW_STATE_FULLSCREEN;
@@ -214,6 +203,46 @@ ui::WindowShowState Application::GetWindowShowStateXPK(
   return ui::SHOW_STATE_DEFAULT;
 }
 
+bool Application::Launch(const LaunchParams& launch_params) {
+  if (!runtimes_.empty()) {
+    LOG(ERROR) << "Attempt to launch app with id " << id()
+               << ", but it is already running.";
+    return false;
+  }
+
+  CHECK(!render_process_host_);
+  bool is_wgt = data_->manifest_type() == Manifest::TYPE_WIDGET;
+
+  GURL url = is_wgt ? GetStartURL<Manifest::TYPE_WIDGET>() :
+                      GetStartURL<Manifest::TYPE_MANIFEST>();
+  if (!url.is_valid())
+    return false;
+
+  remote_debugging_enabled_ = launch_params.remote_debugging;
+
+  Runtime* runtime = Runtime::Create(
+      runtime_context_,
+      this, content::SiteInstance::CreateForURL(runtime_context_, url));
+  render_process_host_ = runtime->GetRenderProcessHost();
+  render_process_host_->AddObserver(this);
+  web_contents_ = runtime->web_contents();
+  InitSecurityPolicy();
+  runtime->LoadURL(url);
+
+  NativeAppWindow::CreateParams params;
+  params.net_wm_pid = launch_params.launcher_pid;
+  params.state = is_wgt ?
+      GetWindowShowState<Manifest::TYPE_WIDGET>(launch_params):
+      GetWindowShowState<Manifest::TYPE_MANIFEST>(launch_params);
+  window_show_state_ = params.state;
+
+  params.splash_screen_path = GetSplashScreenPath();
+
+  runtime->AttachWindow(params);
+
+  return true;
+}
+
 GURL Application::GetAbsoluteURLFromKey(const std::string& key) {
   const Manifest* manifest = data_->GetManifest();
   std::string source;
@@ -221,10 +250,7 @@ GURL Application::GetAbsoluteURLFromKey(const std::string& key) {
   if (!manifest->GetString(key, &source) || source.empty())
     return GURL();
 
-  std::size_t found = source.find("://");
-  if (found == std::string::npos)
-    return data_->GetResourceURL(source);
-  return GURL(source);
+  return data_->GetResourceURL(source);
 }
 
 void Application::Terminate() {
@@ -275,7 +301,8 @@ void Application::RenderProcessHostDestroyed(RenderProcessHost* host) {
 
 void Application::NotifyTermination() {
   CHECK(!render_process_host_);
-  observer_->OnApplicationTerminated(this);
+  if (observer_)
+    observer_->OnApplicationTerminated(this);
 }
 
 bool Application::UseExtension(const std::string& extension_name) const {
@@ -372,7 +399,7 @@ void Application::InitSecurityPolicy() {
   // CSP policy takes precedence over WARP.
   if (data_->HasCSPDefined())
     security_policy_.reset(new SecurityPolicyCSP(this));
-  else if (data_->GetPackageType() == Package::WGT)
+  else if (data_->manifest_type() == Manifest::TYPE_WIDGET)
     security_policy_.reset(new SecurityPolicyWARP(this));
 
   if (security_policy_)

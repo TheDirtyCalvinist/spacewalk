@@ -15,6 +15,7 @@ import android.net.Uri;
 import android.net.http.SslCertificate;
 import android.net.http.SslError;
 import android.os.Message;
+import android.os.Handler;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -39,6 +40,8 @@ import org.xwalk.core.internal.XWalkUIClientInternal.LoadStatusInternal;
 class XWalkContentsClientBridge extends XWalkContentsClient
         implements ContentViewDownloadDelegate {
     private static final String TAG = XWalkContentsClientBridge.class.getName();
+    private static final int NEW_XWALKVIEW_CREATED = 100;
+    private static final int NEW_ICON_DOWNLOAD     = 101;
 
     private XWalkViewInternal mXWalkView;
     private XWalkUIClientInternal mXWalkUIClient;
@@ -51,6 +54,7 @@ class XWalkContentsClientBridge extends XWalkContentsClient
     private PageLoadListener mPageLoadListener;
     private XWalkNavigationHandler mNavigationHandler;
     private XWalkNotificationService mNotificationService;
+    private Handler mUiThreadHandler;
 
     /** State recording variables */
     // For fullscreen state.
@@ -90,6 +94,33 @@ class XWalkContentsClientBridge extends XWalkContentsClient
         mXWalkView = xwView;
 
         mInterceptNavigationDelegate = new InterceptNavigationDelegateImpl(this);
+
+        mUiThreadHandler = new Handler() {
+            @Override
+            public void handleMessage(Message msg) {
+                switch(msg.what) {
+                    case NEW_XWALKVIEW_CREATED:
+                        XWalkViewInternal newXWalkView = (XWalkViewInternal) msg.obj;
+                        if (newXWalkView == mXWalkView) {
+                            throw new IllegalArgumentException("Parent XWalkView cannot host it's own popup window");
+                        }
+
+                        if (newXWalkView != null && newXWalkView.getNavigationHistory().size() != 0) {
+                            throw new IllegalArgumentException("New WebView for popup window must not have been previously navigated.");
+                        }
+
+                        mXWalkView.completeWindowCreation(newXWalkView);
+                        break;
+                    case NEW_ICON_DOWNLOAD:
+                        String url = (String) msg.obj;
+                        nativeDownloadIcon(mNativeContentsClientBridge, url);
+                        break;
+                    default:
+                        throw new IllegalStateException();
+                }
+            }
+        };
+
     }
 
     public void setUIClient(XWalkUIClientInternal client) {
@@ -241,8 +272,8 @@ class XWalkContentsClientBridge extends XWalkContentsClient
 
     @Override
     public void onReceivedSslError(ValueCallback<Boolean> callback, SslError error) {
-        if (mXWalkClient != null && isOwnerActivityRunning()) {
-            mXWalkClient.onReceivedSslError(mXWalkView, callback, error);
+        if (mXWalkResourceClient != null && isOwnerActivityRunning()) {
+            mXWalkResourceClient.onReceivedSslError(mXWalkView, callback, error);
         }
     }
 
@@ -346,10 +377,23 @@ class XWalkContentsClientBridge extends XWalkContentsClient
 
     @Override
     public boolean onCreateWindow(boolean isDialog, boolean isUserGesture) {
-        if (isOwnerActivityRunning()) {
-            return mXWalkUIClient.onCreateWindow(isDialog, isUserGesture);
+        if (isDialog) return false;
+        
+        XWalkUIClientInternal.InitiateByInternal initiator =
+                XWalkUIClientInternal.InitiateByInternal.BY_JAVASCRIPT;
+        if (isUserGesture) {
+            initiator = XWalkUIClientInternal.InitiateByInternal.BY_USER_GESTURE;
         }
-        return false;
+
+        ValueCallback<XWalkViewInternal> callback = new ValueCallback<XWalkViewInternal>() {
+            @Override
+            public void onReceiveValue(XWalkViewInternal newXWalkView) {
+                Message m = mUiThreadHandler.obtainMessage(NEW_XWALKVIEW_CREATED, newXWalkView);
+                m.sendToTarget();
+            }
+        };
+
+        return mXWalkUIClient.onCreateWindowRequested(mXWalkView, initiator, callback);
     }
 
     @Override
@@ -463,11 +507,11 @@ class XWalkContentsClientBridge extends XWalkContentsClient
                 if (completed) {
                     throw new IllegalStateException("Duplicate openFileChooser result");
                 }
-                completed = true;
                 if (value == null && !syncCallFinished) {
                     syncNullReceived = true;
                     return;
                 }
+                completed = true;
                 if (value == null) {
                     nativeOnFilesNotSelected(mNativeContentsClientBridge,
                             processId, renderId, modeFlags);
@@ -497,6 +541,9 @@ class XWalkContentsClientBridge extends XWalkContentsClient
         // File chooser requires user interaction, valid derives should handle it in async process.
         // If the ValueCallback receive a sync result with null value, it is considered the
         // file chooser is not overridden.
+        if (uploadFile.syncNullReceived) {
+            return mXWalkView.showFileChooser(uploadFile, acceptTypes, Boolean.toString(capture));
+        }
         return !uploadFile.syncNullReceived;
     }
 
@@ -664,6 +711,17 @@ class XWalkContentsClientBridge extends XWalkContentsClient
         onScaleChanged(oldPageScaleFactor, mPageScaleFactor);
     }
 
+    @CalledByNative
+    public void onIconAvailable(String url) {
+        Message m = mUiThreadHandler.obtainMessage(NEW_ICON_DOWNLOAD, url);
+        mXWalkUIClient.onIconAvailable(mXWalkView, url, m);
+    }
+
+    @CalledByNative
+    public void onReceivedIcon(String url, Bitmap icon) {
+        mXWalkUIClient.onReceivedIcon(mXWalkView, url, icon);
+    }
+
     //--------------------------------------------------------------------------------------------
     //  Native methods
     //--------------------------------------------------------------------------------------------
@@ -682,4 +740,5 @@ class XWalkContentsClientBridge extends XWalkContentsClient
             int processId, int renderId, int mode_flags, String filepath, String displayName);
     private native void nativeOnFilesNotSelected(long nativeXWalkContentsClientBridge,
             int processId, int renderId, int mode_flags);
+    private native void nativeDownloadIcon(long nativeXWalkContentsClientBridge, String url);
 }

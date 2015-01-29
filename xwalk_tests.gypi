@@ -33,8 +33,7 @@
         'xwalk_runtime',
       ],
       'sources': [
-        'application/common/application_storage_impl_unittest.cc',
-        'application/common/installer/package_unittest.cc',
+        'application/common/package/package_unittest.cc',
         'application/common/application_unittest.cc',
         'application/common/application_file_util_unittest.cc',
         'application/common/id_util_unittest.cc',
@@ -91,7 +90,7 @@
       'sources': [
         'application/test/application_browsertest.cc',
         'application/test/application_browsertest.h',
-        'application/test/application_multi_app_test.cc',
+        'application/test/application_test.cc',
         'application/test/application_testapi.cc',
         'application/test/application_testapi.h',
         'application/test/application_testapi_test.cc',

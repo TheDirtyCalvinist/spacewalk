@@ -4,6 +4,7 @@
 
 package org.xwalk.core.internal;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
@@ -21,19 +22,20 @@ import org.chromium.base.ApplicationStatusManager;
 import org.chromium.base.CommandLine;
 import org.chromium.base.JNINamespace;
 import org.chromium.base.PathUtils;
+import org.chromium.base.ResourceExtractor;
+import org.chromium.base.ResourceExtractor.ResourceIntercepter;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.library_loader.LibraryLoader;
 import org.chromium.base.library_loader.ProcessInitException;
 import org.chromium.content.browser.BrowserStartupController;
 import org.chromium.content.browser.DeviceUtils;
-import org.chromium.content.browser.ResourceExtractor;
-import org.chromium.content.browser.ResourceExtractor.ResourceIntercepter;
 import org.chromium.content.common.ContentSwitches;
 import org.chromium.net.NetworkChangeNotifier;
 
 @JNINamespace("xwalk")
 class XWalkViewDelegate {
     private static boolean sInitialized = false;
+    private static boolean sLibraryLoaded = false;
     private static boolean sRunningOnIA = true;
     private static final String PRIVATE_DATA_DIRECTORY_SUFFIX = "xwalkcore";
     private static final String[] MANDATORY_PAKS = {
@@ -78,10 +80,37 @@ class XWalkViewDelegate {
         }
     }
 
+    public static void loadXWalkLibrary(Context context) throws UnsatisfiedLinkError {
+        if (sLibraryLoaded) return;
+
+        // If context is null, it's called from wrapper's ReflectionHelper to try
+        // loading native library within the package. No need to try load from library
+        // package in this case.
+        // If context's applicationContext is not the same package with itself,
+        // It's a cross package invoking, load core library from library apk.
+        // Only load the native library from /data/data if the Android version is
+        // lower than 4.2. Android enables a system path /data/app-lib to store native
+        // libraries starting from 4.2 and load them automatically.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 && context != null &&
+                !context.getApplicationContext().getPackageName().equals(context.getPackageName())) {
+            for (String library : MANDATORY_LIBRARIES) {
+                System.load("/data/data/" + context.getPackageName() + "/lib/" + library);
+            }
+        }
+        loadLibrary(context);
+
+        if (sRunningOnIA && !nativeIsLibraryBuiltForIA()) {
+            throw new UnsatisfiedLinkError();
+        }
+        sLibraryLoaded = true;
+    }
+
     public static void init(XWalkViewInternal xwalkView) throws UnsatisfiedLinkError {
         if (sInitialized) {
             return;
         }
+
+        loadXWalkLibrary(xwalkView.getContext());
 
         // Initialize the ActivityStatus. This is needed and used by many internal
         // features such as location provider to listen to activity status.
@@ -106,54 +135,63 @@ class XWalkViewDelegate {
             CommandLine.init(readCommandLine(context.getApplicationContext()));
         }
 
-        // If context's applicationContext is not the same package with itself,
-        // It's a cross package invoking, load core library from library apk.
-        // Only load the native library from /data/data if the Android version is
-        // lower than 4.2. Android enables a system path /data/app-lib to store native
-        // libraries starting from 4.2 and load them automatically.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 &&
-                !context.getApplicationContext().getPackageName().equals(context.getPackageName())) {
-            for (String library : MANDATORY_LIBRARIES) {
-                System.load("/data/data/" + context.getPackageName() + "/lib/" + library);
-            }
-        }
-        loadLibrary(context);
-
-        if (sRunningOnIA && !nativeIsLibraryBuiltForIA()) {
-            throw new UnsatisfiedLinkError();
-        }
-
         ResourceExtractor.setMandatoryPaksToExtract(MANDATORY_PAKS);
         final int resourcesListResId = context.getResources().getIdentifier(
                 XWALK_RESOURCES_LIST_RES_NAME, "array", context.getPackageName());
-        if (resourcesListResId != 0) {
+        final AssetManager assets = context.getAssets();
+        if (!context.getPackageName().equals(context.getApplicationContext().getPackageName()) ||
+                resourcesListResId != 0) {
+            // For shared mode, assets are in library package.
+            // For embedding API usage, assets are in res/raw.
             ResourceExtractor.setResourceIntercepter(new ResourceIntercepter() {
 
                 @Override
                 public Set<String> getInterceptableResourceList() {
-                    try {
-                        Set<String> resourcesList = new HashSet<String>();
-                        String[] resources = context.getResources().getStringArray(resourcesListResId);
-                        for (String resource : resources) {
-                            resourcesList.add(resource);
-                        }
-                        return resourcesList;
-                    } catch (NotFoundException e) {
-                        Log.w(TAG, "R.array." + XWALK_RESOURCES_LIST_RES_NAME + " can't be found.");
+                    Set<String> resourcesList = new HashSet<String>();
+                    if (!context.getPackageName().equals(
+                            context.getApplicationContext().getPackageName())) {
+                        try {
+                            for (String resource : assets.list("")) {
+                                resourcesList.add(resource);
+                            }
+                        } catch (IOException e){}
                     }
-                    return null;
+                    if (resourcesListResId != 0) {
+                        try {
+                            String[] resources = context.getResources().getStringArray(resourcesListResId);
+                            for (String resource : resources) {
+                                resourcesList.add(resource);
+                            }
+                        } catch (NotFoundException e) {
+                            Log.w(TAG, "R.array." + XWALK_RESOURCES_LIST_RES_NAME + " can't be found.");
+                        }
+                    }
+                    return resourcesList;
                 }
 
                 @Override
                 public InputStream interceptLoadingForResource(String resource) {
-                    String resourceName = resource.split("\\.")[0];
-                    int resId = context.getResources().getIdentifier(
-                            resourceName, "raw", context.getPackageName());
-                    try {
-                        if (resId != 0) return context.getResources().openRawResource(resId);
-                    } catch (NotFoundException e) {
-                        Log.w(TAG, "R.raw." + resourceName + " can't be found.");
+                    if (!context.getPackageName().equals(
+                            context.getApplicationContext().getPackageName())) {
+                        try {
+                            InputStream fromAsset = context.getAssets().open(resource);
+                            if (fromAsset != null) return fromAsset;
+                        } catch (IOException e) {
+                            Log.w(TAG, resource + " can't be found in assets.");
+                        }
                     }
+
+                    if (resourcesListResId != 0) {
+                        String resourceName = resource.split("\\.")[0];
+                        int resId = context.getResources().getIdentifier(
+                                resourceName, "raw", context.getPackageName());
+                        try {
+                            if (resId != 0) return context.getResources().openRawResource(resId);
+                        } catch (NotFoundException e) {
+                            Log.w(TAG, "R.raw." + resourceName + " can't be found.");
+                        }
+                    }
+
                     return null;
                 }
             });
@@ -207,5 +245,21 @@ class XWalkViewDelegate {
 
     static {
         sRunningOnIA = Build.CPU_ABI.equalsIgnoreCase("x86");
+        if (!sRunningOnIA) {
+            // This is not the final decision yet.
+            // With latest Houdini, an app with ARM binary will see system abi as if it's running on
+            // arm device. Here needs some further check for real system abi.
+            try {
+                Process process = Runtime.getRuntime().exec("getprop ro.product.cpu.abi");
+                InputStreamReader ir = new InputStreamReader(process.getInputStream());
+                BufferedReader input = new BufferedReader(ir);
+                String abi = input.readLine();
+                sRunningOnIA = abi.contains("x86");
+                input.close();
+                ir.close();
+            } catch (IOException e) {
+                Log.w(TAG, Log.getStackTraceString(e));
+            }
+        }
     }
 }

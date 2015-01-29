@@ -10,6 +10,9 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.HashMap;
 
+import android.content.Context;
+import android.content.pm.PackageManager;
+
 /**
  * This class is used to encapsulate the reflection invoking for bridge and wrapper.
  *
@@ -32,6 +35,7 @@ public class ReflectionHelper {
 
         Constructor<?> loadConstructor() {
             Class<?> clazz = loadClass(fullClassName);
+            if (clazz == null) return null;
             Class<?>[] params = new Class<?>[paramTypes.length];
             for (int i = 0; i < paramTypes.length; i++) {
                 Object type = paramTypes[i];
@@ -63,20 +67,102 @@ public class ReflectionHelper {
     private static Map<String, ConstructorHelper> sConstructorHelperMap =
             new HashMap<String, ConstructorHelper>();
     private static ClassLoader sBridgeOrWrapperLoader = null;
+    private static Context sBridgeContext = null;
     private static boolean sIsWrapper;
     private final static String INTERNAL_PACKAGE = "org.xwalk.core.internal";
+    private final static String LIBRARY_APK_PACKAGE = "org.xwalk.core";
+    /* Wrapper Only
+    private static boolean sAllowCrossPackage = false;
+    private static boolean sAlreadyUsingLibrary = false;
+    private static SharedXWalkExceptionHandler sExceptionHandler = null;
 
-    public static void init(boolean crossPackage) {
-        assert isWrapper();
-        if (!crossPackage) {
-            initClassLoader(ReflectionHelper.class.getClassLoader());
-        } else {
-            // TODO(wang16): Support shared mode and initClassLoader cross package.
-        }
+    static void setExceptionHandler(SharedXWalkExceptionHandler handler) {
+        sExceptionHandler = handler;
     }
 
-    public static void initClassLoader(ClassLoader loader) {
+    static boolean isUsingLibrary() {
+        return sAlreadyUsingLibrary;
+    }
+
+    static boolean shouldUseLibrary() {
+        if (sAlreadyUsingLibrary) return true;
+
+        // TODO(wang16): There are many other conditions here.
+        // e.g. Whether application uses the ApplicationClass we provided,
+        //      Whether native library arch is correct.
+        assert isWrapper();
+        Class<?> delegateClass = null;
+        try {
+            ClassLoader classLoader = ReflectionHelper.class.getClassLoader();
+            delegateClass = classLoader.loadClass(
+                    INTERNAL_PACKAGE + "." + "XWalkViewDelegate");
+        } catch (ClassNotFoundException e) {
+            return true;
+        }
+        if (delegateClass == null) return true;
+        try {
+            Method loadXWalkLibrary = delegateClass.getDeclaredMethod(
+                    "loadXWalkLibrary", Context.class);
+            loadXWalkLibrary.invoke(null, (Context)null);
+        } catch (NoSuchMethodException e) {
+            return true;
+        } catch (IllegalArgumentException e) {
+            return true;
+        } catch (IllegalAccessException e) {
+            return true;
+        } catch (InvocationTargetException e) {
+            return true;
+        } catch (UnsatisfiedLinkError e) {
+            return true;
+        }
+        return false;
+    }
+    Wrapper Only */
+
+    public static Context getBridgeContext() {
+        return sBridgeContext;
+    }
+
+    /* Wrapper Only
+    public static void allowCrossPackage() {
+        sAllowCrossPackage = true;
+    }
+    Wrapper Only */
+
+    public static void init() {
+        assert isWrapper();
+        /* Wrapper Only
+        if (shouldUseLibrary()) {
+            if (!sAllowCrossPackage) {
+                handleException("Use SharedXWalkView if you want to support shared mode");
+            }
+            XWalkApplication app = XWalkApplication.getApplication();
+            if (app == null) {
+                // TODO(wang16): Handle this well.
+                handleException("Shared mode requires XWalkApplication");
+                return;
+            }
+            try {
+                sBridgeContext = app.createPackageContext(
+                        LIBRARY_APK_PACKAGE,
+                        Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
+                sAlreadyUsingLibrary = true;
+            } catch (PackageManager.NameNotFoundException e) {
+                handleException(e);
+            }
+            if (sBridgeContext != null) {
+                app.addResource(sBridgeContext.getResources());
+                initClassLoader(sBridgeContext.getClassLoader(), sBridgeContext);
+            }
+        } else {
+            initClassLoader(ReflectionHelper.class.getClassLoader(), null);
+        }
+        Wrapper Only */
+    }
+
+    public static void initClassLoader(ClassLoader loader, Context bridgeContext) {
         sBridgeOrWrapperLoader = loader;
+        sBridgeContext = bridgeContext;
         sBridgeWrapperMap.clear();
         sConstructorMap.clear();
         try {
@@ -89,8 +175,9 @@ public class ReflectionHelper {
                 // with wrapper's classloader via reflection.
                 Class<?> helperInBridge =
                         sBridgeOrWrapperLoader.loadClass(INTERNAL_PACKAGE + "." + "ReflectionHelper");
-                Method initInBridge = helperInBridge.getMethod("initClassLoader", ClassLoader.class);
-                initInBridge.invoke(null, ReflectionHelper.class.getClassLoader());
+                Method initInBridge = helperInBridge.getMethod(
+                        "initClassLoader", ClassLoader.class, Context.class);
+                initInBridge.invoke(null, ReflectionHelper.class.getClassLoader(), sBridgeContext);
             } else {
                 // JavascriptInterface is an annotation class bridge will use but declared in
                 // wrapper.
@@ -115,7 +202,8 @@ public class ReflectionHelper {
     public static Class<?> loadClass(String clazz) {
         // Any embedder using Embedding API should only use the exposed APIs which are
         // in wrapper, so the initialization process is always starting from wrapper.
-        if (sBridgeOrWrapperLoader == null) init(false);
+        if (sBridgeOrWrapperLoader == null) init();
+        if (sBridgeOrWrapperLoader == null) return null;
         try {
             return sBridgeOrWrapperLoader.loadClass(clazz);
         } catch (ClassNotFoundException e) {
@@ -125,6 +213,7 @@ public class ReflectionHelper {
     }
 
     public static Method loadMethod(Class<?> clazz, String name, Object... paramTypes) {
+        if (sBridgeOrWrapperLoader == null) return null;
         Class<?>[] params = new Class<?>[paramTypes.length];
         for (int i = 0; i < paramTypes.length; i++) {
             Object type = paramTypes[i];
@@ -144,6 +233,11 @@ public class ReflectionHelper {
 
     public static void handleException(Exception e) {
         e.printStackTrace();
+        /* Wrapper Only
+        if (isWrapper() && sExceptionHandler != null) {
+            if (sExceptionHandler.handleException(e)) return;
+        }
+        Wrapper Only */
         throw new RuntimeException(e);
     }
 
@@ -178,6 +272,7 @@ public class ReflectionHelper {
     }
 
     public static Object invokeMethod(Method m, Object instance, Object... parameters) {
+        if (sBridgeOrWrapperLoader == null) return null;
         Object ret = null;
         if (m != null) {
             try {
@@ -197,6 +292,7 @@ public class ReflectionHelper {
 
     // Convert between wrapper and bridge instance.
     public static Object getBridgeOrWrapper(Object instance) {
+        if (sBridgeOrWrapperLoader == null) return null;
         if (instance == null) return null;
         Class<?> clazz = instance.getClass();
         Method method = sBridgeWrapperMap.get(clazz);
@@ -206,13 +302,26 @@ public class ReflectionHelper {
                 methodName = "getWrapper";
             }
             try {
-                method = clazz.getMethod(methodName);
+                method = clazz.getDeclaredMethod(methodName);
             } catch (NoSuchMethodException e) {
                 handleException(e);
             }
-            if (method != null) sBridgeWrapperMap.put(clazz, method);
+
+            if (method == null)  {
+                return invokeMethod(method, instance);
+            } else {
+                sBridgeWrapperMap.put(clazz, method);
+            }
         }
-        return invokeMethod(method, instance);
+
+        if (method.isAccessible()) return invokeMethod(method, instance);
+
+        // This is to enable the accessibility of getBridge temporarily.
+        // It's not public for documentation generating.
+        method.setAccessible(true);
+        Object ret = invokeMethod(method, instance);
+        method.setAccessible(false);
+        return ret;
     }
 
     private static boolean isWrapper() {

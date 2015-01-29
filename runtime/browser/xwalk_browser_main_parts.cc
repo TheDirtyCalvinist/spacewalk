@@ -76,6 +76,7 @@ namespace xwalk {
 XWalkBrowserMainParts::XWalkBrowserMainParts(
     const content::MainFunctionParams& parameters)
     : xwalk_runner_(XWalkRunner::GetInstance()),
+      extension_service_(NULL),
       startup_url_(url::kAboutBlankURL),
       parameters_(parameters),
       run_default_message_loop_(true) {
@@ -98,7 +99,6 @@ XWalkBrowserMainParts::~XWalkBrowserMainParts() {
 void XWalkBrowserMainParts::PreMainMessageLoopStart() {
   CommandLine* command_line = CommandLine::ForCurrentProcess();
   command_line->AppendSwitch(switches::kEnableViewport);
-  command_line->AppendSwitch(switches::kEnableViewportMeta);
 
   command_line->AppendSwitch(xswitches::kEnableOverlayScrollbars);
 
@@ -110,7 +110,6 @@ void XWalkBrowserMainParts::PreMainMessageLoopStart() {
   command_line->AppendSwitch(switches::kAllowFileAccessFromFiles);
 
   // Enable SIMD.JS API by default.
-  /*
   std::string js_flags("--simd_object");
   if (command_line->HasSwitch(switches::kJavaScriptFlags)) {
     js_flags += " ";
@@ -118,7 +117,6 @@ void XWalkBrowserMainParts::PreMainMessageLoopStart() {
         command_line->GetSwitchValueASCII(switches::kJavaScriptFlags);
   }
   command_line->AppendSwitchASCII(switches::kJavaScriptFlags, js_flags);
-  */
 
   startup_url_ = GetURLFromCommandLine(*command_line);
 }

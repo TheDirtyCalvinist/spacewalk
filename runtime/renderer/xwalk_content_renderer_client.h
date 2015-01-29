@@ -1,4 +1,5 @@
 // Copyright (c) 2013 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +12,8 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/files/file.h"
 #include "base/strings/string16.h"
-#include "content/public/common/page_transition_types.h"
 #include "content/public/renderer/content_renderer_client.h"
+#include "ui/base/page_transition_types.h"
 #include "xwalk/extensions/renderer/xwalk_extension_renderer_controller.h"
 #if defined(OS_ANDROID)
 #include "xwalk/runtime/renderer/android/xwalk_render_process_observer.h"
@@ -56,10 +57,13 @@ class XWalkContentRendererClient
 #endif
 
   virtual bool WillSendRequest(blink::WebFrame* frame,
-                               content::PageTransition transition_type,
+                               ui::PageTransition transition_type,
                                const GURL& url,
                                const GURL& first_party_for_cookies,
                                GURL* new_url) OVERRIDE;
+
+ protected:
+  scoped_ptr<XWalkRenderProcessObserver> xwalk_render_process_observer_;
 
  private:
   // XWalkExtensionRendererController::Delegate implementation.
@@ -69,7 +73,6 @@ class XWalkContentRendererClient
   scoped_ptr<extensions::XWalkExtensionRendererController>
       extension_controller_;
 
-  scoped_ptr<XWalkRenderProcessObserver> xwalk_render_process_observer_;
 #if defined(OS_ANDROID)
   scoped_ptr<visitedlink::VisitedLinkSlave> visited_link_slave_;
 #endif

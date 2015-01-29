@@ -17,6 +17,7 @@ class XWalkDevToolsServer {
     private static final String DEBUG_PERMISSION_SIFFIX = ".permission.DEBUG";
 
     private long mNativeDevToolsServer = 0;
+    private String mSocketName = null;
 
     // Defines what processes may access to the socket.
     public enum Security {
@@ -26,10 +27,14 @@ class XWalkDevToolsServer {
         // In addition to default authorization allows access to an app with android permission
         // named chromeAppPackageName + DEBUG_PERMISSION_SUFFIX.
         ALLOW_DEBUG_PERMISSION,
+
+        // Allow other apps to access the web socket url to remote debug.
+        ALLOW_SOCKET_ACCESS,
     }
 
     public XWalkDevToolsServer(String socketName) {
         mNativeDevToolsServer = nativeInitRemoteDebugging(socketName);
+        mSocketName = socketName;
     }
 
     public void destroy() {
@@ -43,23 +48,24 @@ class XWalkDevToolsServer {
 
     public void setRemoteDebuggingEnabled(boolean enabled, Security security) {
         boolean allowDebugPermission = security == Security.ALLOW_DEBUG_PERMISSION;
-        nativeSetRemoteDebuggingEnabled(mNativeDevToolsServer, enabled, allowDebugPermission);
+        boolean allowSocketAccess = security == Security.ALLOW_SOCKET_ACCESS;
+        nativeSetRemoteDebuggingEnabled(
+                mNativeDevToolsServer, enabled, allowDebugPermission, allowSocketAccess);
     }
 
     public void setRemoteDebuggingEnabled(boolean enabled) {
         setRemoteDebuggingEnabled(enabled, Security.DEFAULT);
     }
 
-    public void allowConnectionFromUid(int uid) {
-        nativeAllowConnectionFromUid(mNativeDevToolsServer, uid);
+    public String getSocketName() {
+        return mSocketName;
     }
 
     private native long nativeInitRemoteDebugging(String socketName);
     private native void nativeDestroyRemoteDebugging(long devToolsServer);
     private native boolean nativeIsRemoteDebuggingEnabled(long devToolsServer);
     private native void nativeSetRemoteDebuggingEnabled(
-            long devToolsServer, boolean enabled, boolean allowDebugPermission);
-    private native void nativeAllowConnectionFromUid(long devToolsServer, int uid);
+            long devToolsServer, boolean enabled, boolean allowDebugPermission, boolean allowSocketAccess);
 
     @CalledByNative
     private static boolean checkDebugPermission(Context context, int pid, int uid) {

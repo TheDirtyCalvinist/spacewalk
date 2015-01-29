@@ -97,10 +97,11 @@ bool AppWidgetStorage::SaveConfigInfoItem(base::DictionaryValue* dict) {
   std::string key;
   std::string value;
   bool read_only = false;
-  dict->GetString(kPreferencesName, &key);
-  dict->GetString(kPreferencesValue, &value);
-  dict->GetBoolean(kPreferencesReadonly, &read_only);
-  return AddEntry(key, value, read_only);
+  if (dict->GetString(kPreferencesName, &key) &&
+      dict->GetString(kPreferencesValue, &value) &&
+      dict->GetBoolean(kPreferencesReadonly, &read_only))
+    return AddEntry(key, value, read_only);
+  return false;
 }
 
 bool AppWidgetStorage::SaveConfigInfoInDB() {
@@ -145,7 +146,8 @@ bool AppWidgetStorage::InitStorageTable() {
   }
 
   sql::Transaction transaction(sqlite_db_.get());
-  transaction.Begin();
+  if (!transaction.Begin())
+    return false;
   if (!sqlite_db_->Execute(kCreateStorageTableOp))
     return false;
   if (!transaction.Commit())
@@ -259,7 +261,8 @@ bool AppWidgetStorage::Clear() {
     return false;
 
   sql::Transaction transaction(sqlite_db_.get());
-  transaction.Begin();
+  if (!transaction.Begin())
+    return false;
 
   sql::Statement stmt(sqlite_db_->GetUniqueStatement(
       kClearStorageTableWithBindOp));

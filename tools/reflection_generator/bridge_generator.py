@@ -44,6 +44,7 @@ ${STATIC_INITIALIZER}
     imports_string = self.GenerateImportRules()
     internal_class_name = self._java_data.class_name
     bridge_class_name = self._generated_class_name
+    print bridge_class_name
     create_internally_constructor = self.GenerateCreateInternallyConstructor()
     bridge_enums = self.GenerateBridgeEnums()
     bridge_methods = self.GenerateBridgeMethods()
@@ -107,6 +108,7 @@ null, type.toString());
   def GenerateBridgeMethods(self):
     methods_string = ''
     for method in self._java_data.methods:
+      print method.method_name
       methods_string += method.GenerateMethodsStringForBridge()
     return methods_string
 
