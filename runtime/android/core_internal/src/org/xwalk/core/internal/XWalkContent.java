@@ -802,10 +802,10 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     }
 
     public XWalkHitTestDataInternal getHitTestData(){
-        nativeRequestNewHitTestDataAt(mXWalkContent,
+        nativeRequestNewHitTestDataAt(mNativeContent,
                 (int) Math.round(mContentViewCore.getLastDownX() / mDIPScale),
                 (int) Math.round(mContentViewCore.getLastDownY() / mDIPScale));
-        nativeUpdateLastHitTestResult(mXWalkContent);
+        nativeUpdateLastHitTestResult(mNativeContent);
         return mPossiblyStaleHitTestData;
     }
 
