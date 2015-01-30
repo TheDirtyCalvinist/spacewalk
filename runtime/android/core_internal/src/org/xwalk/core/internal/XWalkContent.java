@@ -741,7 +741,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
             // Note this will trigger IPC back to browser even if nothing is
             // hit.
             Log.d(TAG, "Requesting new hit test at " + event.getX(actionIndex) + " " + event.getY(actionIndex));
-            nativeRequestNewHitTestDataAt(mXWalkContent,
+            nativeRequestNewHitTestDataAt(mNativeContent,
                     (int) Math.round(event.getX(actionIndex) / mDIPScale),
                     (int) Math.round(event.getY(actionIndex) / mDIPScale));
         }
