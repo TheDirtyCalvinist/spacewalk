@@ -21,6 +21,7 @@
 #include "ipc/message_filter.h"
 #include "xwalk/extensions/common/xwalk_extension_messages.h"
 #include "xwalk/extensions/common/xwalk_extension_switches.h"
+#include "xwalk/runtime/browser/xwalk_runner.h"
 #include "xwalk/runtime/common/xwalk_switches.h"
 
 using content::BrowserThread;
@@ -52,7 +53,7 @@ class XWalkExtensionProcessHost::RenderProcessMessageFilter
 
  private:
   // IPC::ChannelProxy::MessageFilter implementation.
-  virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE {
+  bool OnMessageReceived(const IPC::Message& message) override {
     bool handled = true;
     IPC_BEGIN_MESSAGE_MAP(RenderProcessMessageFilter, message)
       IPC_MESSAGE_HANDLER_DELAY_REPLY(
@@ -86,18 +87,18 @@ class ExtensionSandboxedProcessLauncherDelegate
   virtual ~ExtensionSandboxedProcessLauncherDelegate() {}
 
 #if defined(OS_WIN)
-  virtual bool ShouldSandbox() OVERRIDE {
+  bool ShouldSandbox() override {
     return false;
   }
 #elif defined(OS_POSIX)
-  virtual int GetIpcFd() OVERRIDE {
-    return ipc_fd_;
+  base::ScopedFD TakeIpcFd() override {
+    return ipc_fd_.Pass();
   }
 #endif
 
  private:
 #if defined(OS_POSIX)
-  int ipc_fd_;
+  base::ScopedFD ipc_fd_;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(ExtensionSandboxedProcessLauncherDelegate);
@@ -122,7 +123,8 @@ XWalkExtensionProcessHost::XWalkExtensionProcessHost(
       is_extension_process_channel_ready_(false),
       delegate_(delegate),
       runtime_variables_(runtime_variables.Pass()) {
-  render_process_host_->GetChannel()->AddFilter(render_process_message_filter_);
+  render_process_host_->GetChannel()->AddFilter(
+      render_process_message_filter_.get());
   BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
       base::Bind(&XWalkExtensionProcessHost::StartProcess,
       base::Unretained(this)));
@@ -152,7 +154,7 @@ void XWalkExtensionProcessHost::StartProcess() {
   CHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
   CHECK(!process_ || !channel_);
 
-#if defined(SHARED_PROCESS_MODE)
+  if (XWalkRunner::GetInstance()->shared_process_mode_enabled()) {
 #if defined(OS_LINUX)
     std::string channel_id =
         IPC::Channel::GenerateVerifiedChannelID(std::string());
@@ -160,7 +162,7 @@ void XWalkExtensionProcessHost::StartProcess() {
     if (!channel_->Connect())
       NOTREACHED();
     IPC::ChannelHandle channel_handle(channel_id,
-        base::FileDescriptor(channel_->TakeClientFileDescriptor(), true));
+        base::FileDescriptor(channel_->TakeClientFileDescriptor()));
     BrowserThread::PostTask(
         BrowserThread::UI, FROM_HERE,
         base::Bind(
@@ -170,7 +172,7 @@ void XWalkExtensionProcessHost::StartProcess() {
 #else
     NOTIMPLEMENTED();
 #endif  // #if defined(OS_LINUX)
-#else
+  } else {
     process_.reset(content::BrowserChildProcessHost::Create(
         content::PROCESS_TYPE_CONTENT_END, this));
 
@@ -206,7 +208,7 @@ void XWalkExtensionProcessHost::StartProcess() {
     process_->Launch(
         new ExtensionSandboxedProcessLauncherDelegate(process_->GetHost()),
         cmd_line.release());
-#endif  // #if defined(SHARED_PROCESS_MODE)
+  }
 
   base::ListValue runtime_variables_lv;
   ToListValue(&const_cast<base::ValueMap&>(*runtime_variables_),
@@ -268,6 +270,8 @@ void XWalkExtensionProcessHost::OnRenderChannelCreated(
   is_extension_process_channel_ready_ = true;
   ep_rp_channel_handle_ = handle;
   ReplyChannelHandleToRenderProcess();
+  if (delegate_)
+    delegate_->OnRenderChannelCreated(render_process_host_->GetID());
 }
 
 void XWalkExtensionProcessHost::ReplyChannelHandleToRenderProcess() {

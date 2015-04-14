@@ -41,7 +41,7 @@ static gfx::Display::Rotation ToDisplayRotation(gfx::Display display,
 
   if (display.bounds().width() > display.bounds().height()) {
     // Landscape devices have landscape-primary as default.
-    rot = static_cast<gfx::Display::Rotation>((rot - 1) % 4);
+    rot = static_cast<gfx::Display::Rotation>((rot + 3) % 4);
   }
 
   return rot;
@@ -53,7 +53,7 @@ static void SetWindowRotation(aura::Window* window, gfx::Display display) {
 #if defined(OS_TIZEN_MOBILE)
   // Assumes portrait display; shows overlay indicator in landscape only.
   bool useOverlay = display.rotation() == gfx::Display::ROTATE_90 ||
-      display.rotation() == gfx::Display::ROTATE_180);
+      display.rotation() == gfx::Display::ROTATE_180;
   top_view_layout()->SetUseOverlay(enableOverlay);
   indicator_widget_->SetDisplay(display);
 #endif
@@ -115,22 +115,25 @@ void NativeAppWindowTizen::Initialize() {
   DCHECK(root_window);
   root_window->AddObserver(this);
 
-  if (SensorProvider* sensor = SensorProvider::GetInstance()) {
-    sensor->AddObserver(this);
-    OnScreenOrientationChanged(sensor->GetScreenOrientation());
+  SensorProvider::GetInstance()->AddObserver(this);
+
+  if (SensorProvider::GetInstance()->connected()) {
+    OnScreenOrientationChanged(
+        SensorProvider::GetInstance()->GetScreenOrientation());
   }
 }
 
 NativeAppWindowTizen::~NativeAppWindowTizen() {
-  if (SensorProvider::GetInstance())
+  if (SensorProvider::GetInstance()->connected())
     SensorProvider::GetInstance()->RemoveObserver(this);
 }
 
 void NativeAppWindowTizen::LockOrientation(
       blink::WebScreenOrientationLockType lock) {
   orientation_lock_ = lock;
-  if (SensorProvider* sensor = SensorProvider::GetInstance())
-    OnScreenOrientationChanged(sensor->GetScreenOrientation());
+  if (SensorProvider::GetInstance()->connected())
+    OnScreenOrientationChanged(
+        SensorProvider::GetInstance()->GetScreenOrientation());
 }
 
 void NativeAppWindowTizen::ViewHierarchyChanged(
@@ -226,6 +229,11 @@ void NativeAppWindowTizen::OnScreenOrientationChanged(
 
   display_.set_rotation(rot);
   SetDisplayRotation(display_);
+}
+
+void NativeAppWindowTizen::OnSensorConnected() {
+  OnScreenOrientationChanged(
+      SensorProvider::GetInstance()->GetScreenOrientation());
 }
 
 void NativeAppWindowTizen::SetDisplayRotation(gfx::Display display) {

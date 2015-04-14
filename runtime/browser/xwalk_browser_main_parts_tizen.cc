@@ -4,7 +4,7 @@
 
 #include "xwalk/runtime/browser/xwalk_browser_main_parts_tizen.h"
 
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "base/files/file_path.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/content_switches.h"
@@ -36,12 +36,14 @@ void XWalkBrowserMainPartsTizen::PreMainMessageLoopStart() {
   // Enable Accelerated 2D Canvas.
   command_line->AppendSwitch(switches::kGpuNoContextLost);
 
-  const char* gl_name;
-  if (base::PathExists(base::FilePath("/usr/lib/libGL.so")))
-    gl_name = gfx::kGLImplementationDesktopName;
-  else
-    gl_name = gfx::kGLImplementationEGLName;
-  command_line->AppendSwitchASCII(switches::kUseGL, gl_name);
+  if (!command_line->HasSwitch(switches::kUseGL)) {
+    const char* gl_name;
+    if (base::PathExists(base::FilePath("/usr/lib/libGL.so")))
+      gl_name = gfx::kGLImplementationDesktopName;
+    else
+      gl_name = gfx::kGLImplementationEGLName;
+    command_line->AppendSwitchASCII(switches::kUseGL, gl_name);
+  }
 
   XWalkBrowserMainParts::PreMainMessageLoopStart();
 }

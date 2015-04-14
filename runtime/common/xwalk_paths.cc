@@ -4,14 +4,16 @@
 
 #include "xwalk/runtime/common/xwalk_paths.h"
 
-#include "base/file_util.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/path_service.h"
 
 #if defined(OS_WIN)
 #include "base/base_paths_win.h"
+#elif defined(OS_TIZEN)
+#include <tzplatform_config.h>
 #elif defined(OS_LINUX)
 #include "base/environment.h"
 #include "base/nix/xdg_util.h"
@@ -65,7 +67,15 @@ base::FilePath GetFrameworkBundlePath() {
 const base::FilePath::CharType kInternalNaClPluginFileName[] =
     FILE_PATH_LITERAL("internal-nacl-plugin");
 
-#if defined(OS_LINUX)
+#if defined(OS_TIZEN)
+base::FilePath GetAppPath() {
+  const char* app_path = getuid() != tzplatform_getuid(TZ_SYS_GLOBALAPP_USER) ?
+                         tzplatform_getenv(TZ_USER_APP) :
+                         tzplatform_getenv(TZ_SYS_RW_APP);
+  return base::FilePath(app_path);
+}
+
+#elif defined(OS_LINUX)
 base::FilePath GetConfigPath() {
   scoped_ptr<base::Environment> env(base::Environment::Create());
   return base::nix::GetXDGDirectory(
@@ -75,7 +85,7 @@ base::FilePath GetConfigPath() {
 
 bool GetXWalkDataPath(base::FilePath* path) {
   base::FilePath::StringType xwalk_suffix;
-#if defined(SHARED_PROCESS_MODE)
+#if defined(OS_TIZEN)
   xwalk_suffix = FILE_PATH_LITERAL("xwalk-service");
 #else
   xwalk_suffix = FILE_PATH_LITERAL("xwalk");
@@ -86,7 +96,10 @@ bool GetXWalkDataPath(base::FilePath* path) {
   CHECK(PathService::Get(base::DIR_LOCAL_APP_DATA, &cur));
   cur = cur.Append(xwalk_suffix);
 
-#elif defined(OS_TIZEN) || defined(OS_LINUX)
+#elif defined(OS_TIZEN)
+  cur = GetAppPath().Append(xwalk_suffix);
+
+#elif defined(OS_LINUX)
   cur = GetConfigPath().Append(xwalk_suffix);
 
 #elif defined(OS_MACOSX)

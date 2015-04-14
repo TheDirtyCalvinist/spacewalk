@@ -21,13 +21,12 @@
         'browser/application.h',
         'browser/application_protocols.cc',
         'browser/application_protocols.h',
+        'browser/application_security_policy.cc',
+        'browser/application_security_policy.h',
         'browser/application_service.cc',
         'browser/application_service.h',
         'browser/application_system.cc',
         'browser/application_system.h',
-
-        'common/security_policy.cc',
-        'common/security_policy.h',
 
         'extension/application_runtime_extension.cc',
         'extension/application_runtime_extension.h',
@@ -61,11 +60,13 @@
           'dependencies': [
             'build/system.gyp:tizen',
             'tizen/xwalk_tizen.gypi:xwalk_tizen_lib',
-            '../third_party/re2/re2.gyp:re2',
+            '<(DEPTH)/ui/events/platform/events_platform.gyp:events_platform',
           ],
           'sources': [
             'browser/application_tizen.cc',
             'browser/application_tizen.h',
+            'browser/application_service_tizen.cc',
+            'browser/application_service_tizen.h',
           ],
         }],
       ],
@@ -119,14 +120,14 @@
       'conditions': [
         ['OS=="linux"', {
           'dependencies': [
-            'application/tools/linux/xwalk_application_tools.gyp:xwalkctl',
             'application/tools/linux/xwalk_application_tools.gyp:xwalk_launcher',
+            'application/tools/linux/xwalk_application_tools.gyp:xwalkctl',
           ],
         }],
         ['tizen == 1', {
           'dependencies': [
-            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk-pkg-helper',
-            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk-backendlib',
+            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk_backend',
+            'application/tools/tizen/xwalk_tizen_tools.gyp:xwalk_backend_lib',
           ],
         }],
       ],

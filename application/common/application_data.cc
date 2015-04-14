@@ -7,8 +7,8 @@
 #include "base/base64.h"
 #include "base/basictypes.h"
 #include "base/command_line.h"
-#include "base/file_util.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/i18n/rtl.h"
 #include "base/logging.h"
 #include "base/memory/singleton.h"
@@ -43,16 +43,11 @@ namespace application {
 
 // static
 scoped_refptr<ApplicationData> ApplicationData::Create(
-    const base::FilePath& path,
-    SourceType source_type,
-    const base::DictionaryValue& manifest_data,
-    const std::string& explicit_id,
+    const base::FilePath& path, const std::string& explicit_id,
+    SourceType source_type, scoped_ptr<Manifest> manifest,
     std::string* error_message) {
   DCHECK(error_message);
   base::string16 error;
-  scoped_ptr<Manifest> manifest(new Manifest(
-      scoped_ptr<base::DictionaryValue>(manifest_data.DeepCopy())));
-
   if (!manifest->ValidateManifest(error_message))
     return NULL;
 
@@ -63,35 +58,20 @@ scoped_refptr<ApplicationData> ApplicationData::Create(
     return NULL;
   }
 
+  ManifestHandlerRegistry* registry =
+      ManifestHandlerRegistry::GetInstance(app_data->manifest_type());
+
+  if (!registry->ValidateAppManifest(app_data, error_message))
+    return NULL;
+
   return app_data;
-}
-
-// static
-scoped_refptr<ApplicationData> ApplicationData::Create(
-    const GURL& url,
-    std::string* error_message) {
-  const std::string& url_spec = url.spec();
-  DCHECK(!url_spec.empty());
-  const std::string& app_id = GenerateId(url_spec);
-
-  base::DictionaryValue manifest;
-  // FIXME: define permissions!
-  manifest.SetString(application_manifest_keys::kStartURLKey, url_spec);
-  // FIXME: Why use URL as name?
-  manifest.SetString(application_manifest_keys::kNameKey, url_spec);
-  manifest.SetString(application_manifest_keys::kXWalkVersionKey, "0");
-  scoped_refptr<ApplicationData> application_data =
-      ApplicationData::Create(base::FilePath(), EXTERNAL_URL,
-                              manifest, app_id, error_message);
-
-  return application_data;
 }
 
 // static
 GURL ApplicationData::GetBaseURLFromApplicationId(
     const std::string& application_id) {
-  return GURL(std::string(xwalk::application::kApplicationScheme) +
-              url::kStandardSchemeSeparator + application_id + "/");
+  return GURL(std::string(kApplicationScheme) +
+      url::kStandardSchemeSeparator + application_id + "/");
 }
 
 ApplicationData::ManifestData* ApplicationData::GetManifestData(
@@ -109,13 +89,9 @@ void ApplicationData::SetManifestData(const std::string& key,
   manifest_data_[key] = linked_ptr<ManifestData>(data);
 }
 
-const std::string& ApplicationData::ID() const {
-  return manifest_->GetApplicationID();
-}
-
 #if defined(OS_TIZEN)
 std::string ApplicationData::GetPackageID() const {
-  return AppIdToPkgId(manifest_->GetApplicationID());
+  return AppIdToPkgId(application_id_);
 }
 #endif
 
@@ -127,21 +103,26 @@ const std::string ApplicationData::VersionString() const {
 }
 
 bool ApplicationData::IsHostedApp() const {
-  return GetManifest()->IsHosted();
+  bool hosted = source_type_ == EXTERNAL_URL;
+#if defined(OS_TIZEN)
+  if (manifest_->HasPath(widget_keys::kContentNamespace)) {
+    std::string ns;
+    if (manifest_->GetString(widget_keys::kContentNamespace, &ns) &&
+        ns == widget_keys::kTizenNamespacePrefix)
+      hosted = true;
+  }
+#endif
+  return hosted;
 }
 
 ApplicationData::ApplicationData(const base::FilePath& path,
-    SourceType source_type, scoped_ptr<Manifest> manifest)
+  SourceType source_type, scoped_ptr<Manifest> manifest)
     : manifest_version_(0),
+      path_(path),
       manifest_(manifest.release()),
       finished_parsing_manifest_(false),
       source_type_(source_type) {
-  DCHECK(path.empty() || path.IsAbsolute());
-  path_ = path;
-  if (manifest_->HasPath(widget_keys::kWidgetKey))
-    package_type_ = Package::WGT;
-  else
-    package_type_ = Package::XPK;
+  DCHECK(path_.empty() || path_.IsAbsolute());
 }
 
 ApplicationData::~ApplicationData() {
@@ -167,15 +148,25 @@ GURL ApplicationData::GetResourceURL(const GURL& application_url,
   return ret_val;
 }
 
-Manifest::Type ApplicationData::GetType() const {
-  return manifest_->GetType();
+GURL ApplicationData::GetResourceURL(const std::string& relative_path) const {
+#if defined (OS_WIN)
+  if (!base::PathExists(path_.Append(base::UTF8ToWide(relative_path)))) {
+#else
+  if (!base::PathExists(path_.Append(relative_path))) {
+#endif
+    LOG(ERROR) << "The path does not exist in the application directory: "
+               << relative_path;
+    return GURL();
+  }
+
+  return GetResourceURL(URL(), relative_path);
 }
 
 bool ApplicationData::Init(const std::string& explicit_id,
                            base::string16* error) {
   DCHECK(error);
   ManifestHandlerRegistry* registry =
-      ManifestHandlerRegistry::GetInstance(GetPackageType());
+      ManifestHandlerRegistry::GetInstance(manifest_type());
   if (!registry->ParseAppManifest(this, error))
     return false;
 
@@ -198,7 +189,7 @@ bool ApplicationData::LoadID(const std::string& explicit_id,
                              base::string16* error) {
   std::string application_id;
 #if defined(OS_TIZEN)
-  if (GetPackageType() == Package::WGT) {
+  if (manifest_type() == Manifest::TYPE_WIDGET) {
     const TizenApplicationInfo* tizen_app_info =
         static_cast<TizenApplicationInfo*>(GetManifestData(
             widget_keys::kTizenApplicationKey));
@@ -212,13 +203,13 @@ bool ApplicationData::LoadID(const std::string& explicit_id,
   }
 
   if (!application_id.empty()) {
-    manifest_->SetApplicationID(application_id);
+    application_id_ = application_id;
     return true;
   }
 #endif
 
   if (!explicit_id.empty()) {
-    manifest_->SetApplicationID(explicit_id);
+    application_id_ = explicit_id;
     return true;
   }
 
@@ -227,17 +218,17 @@ bool ApplicationData::LoadID(const std::string& explicit_id,
     NOTREACHED() << "Could not create ID from path.";
     return false;
   }
-  manifest_->SetApplicationID(application_id);
+  application_id_ = application_id;
   return true;
 }
 
 bool ApplicationData::LoadName(base::string16* error) {
   DCHECK(error);
   base::string16 localized_name;
-  std::string name_key(GetNameKey(GetPackageType()));
+  std::string name_key(GetNameKey(manifest_type()));
 
   if (!manifest_->GetString(name_key, &localized_name) &&
-      package_type_ == Package::XPK) {
+      manifest_type() == Manifest::TYPE_MANIFEST) {
     *error = base::ASCIIToUTF16(errors::kInvalidName);
     return false;
   }
@@ -253,7 +244,7 @@ bool ApplicationData::LoadVersion(base::string16* error) {
 
   version_.reset(new base::Version());
 
-  if (package_type_ == Package::WGT) {
+  if (manifest_type() == Manifest::TYPE_WIDGET) {
     bool ok = manifest_->GetString(widget_keys::kVersionKey, &version_str);
     if (!ok) {
       *error = base::ASCIIToUTF16(errors::kInvalidVersion);
@@ -305,7 +296,7 @@ bool ApplicationData::LoadVersion(base::string16* error) {
 bool ApplicationData::LoadDescription(base::string16* error) {
   DCHECK(error);
   // FIXME: Better to assert on use from Widget.
-  if (package_type_ != Package::XPK)
+  if (manifest_type() != Manifest::TYPE_MANIFEST)
     return true;  // No error.
 
   bool hasDeprecatedKey = manifest_->HasKey(keys::kDeprecatedDescriptionKey);
@@ -372,11 +363,11 @@ PermissionSet ApplicationData::GetManifestPermissions() const {
 
 bool ApplicationData::HasCSPDefined() const {
 #if defined(OS_TIZEN)
-  return  manifest_->HasPath(GetCSPKey(package_type_)) ||
+  return  manifest_->HasPath(GetCSPKey(manifest_type())) ||
           manifest_->HasPath(widget_keys::kCSPReportOnlyKey) ||
           manifest_->HasPath(widget_keys::kAllowNavigationKey);
 #else
-  return manifest_->HasPath(GetCSPKey(package_type_));
+  return manifest_->HasPath(GetCSPKey(manifest_type()));
 #endif
 }
 

@@ -1,4 +1,5 @@
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +8,12 @@
 #include <vector>
 
 #include "content/renderer/render_thread_impl.h"
-#include "content/renderer/renderer_webkitplatformsupport_impl.h"
+#include "content/renderer/renderer_blink_platform_impl.h"
 #include "ipc/ipc_message_macros.h"
 #include "third_party/WebKit/public/web/WebSecurityPolicy.h"
 #include "third_party/WebKit/public/platform/WebString.h"
 #include "xwalk/runtime/common/xwalk_common_messages.h"
+#include "xwalk/runtime/common/xwalk_content_client.h"
 
 
 namespace xwalk {
@@ -44,9 +46,9 @@ void AddAccessWhiteListEntry(
 }  // namespace
 
 XWalkRenderProcessObserver::XWalkRenderProcessObserver()
-    : is_webkit_initialized_(false),
+    : is_blink_initialized_(false),
       is_suspended_(false),
-      security_mode_(application::SecurityPolicy::NoSecurity) {
+      security_mode_(application::ApplicationSecurityPolicy::NoSecurity) {
 }
 
 XWalkRenderProcessObserver::~XWalkRenderProcessObserver() {
@@ -59,13 +61,16 @@ bool XWalkRenderProcessObserver::OnControlMessageReceived(
     IPC_MESSAGE_HANDLER(ViewMsg_SetAccessWhiteList, OnSetAccessWhiteList)
     IPC_MESSAGE_HANDLER(ViewMsg_EnableSecurityMode, OnEnableSecurityMode)
     IPC_MESSAGE_HANDLER(ViewMsg_SuspendJSEngine, OnSuspendJSEngine)
+#if defined(OS_TIZEN)
+    IPC_MESSAGE_HANDLER(ViewMsg_UserAgentStringChanged, OnUserAgentChanged)
+#endif
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
   return handled;
 }
 
 void XWalkRenderProcessObserver::WebKitInitialized() {
-  is_webkit_initialized_ = true;
+  is_blink_initialized_ = true;
   for (std::vector<AccessWhitelistItem>::iterator it = access_whitelist.begin();
        it != access_whitelist.end(); ++it)
     AddAccessWhiteListEntry(it->source_, it->dest_, it->allow_subdomains_);
@@ -74,13 +79,13 @@ void XWalkRenderProcessObserver::WebKitInitialized() {
 }
 
 void XWalkRenderProcessObserver::OnRenderProcessShutdown() {
-  is_webkit_initialized_ = false;
+  is_blink_initialized_ = false;
 }
 
 void XWalkRenderProcessObserver::OnSetAccessWhiteList(const GURL& source,
                                                       const GURL& dest,
                                                       bool allow_subdomains) {
-  if (is_webkit_initialized_)
+  if (is_blink_initialized_)
     AddAccessWhiteListEntry(source, dest, allow_subdomains);
   else
     access_whitelist.push_back(
@@ -88,7 +93,8 @@ void XWalkRenderProcessObserver::OnSetAccessWhiteList(const GURL& source,
 }
 
 void XWalkRenderProcessObserver::OnEnableSecurityMode(
-    const GURL& url, application::SecurityPolicy::SecurityMode mode) {
+    const GURL& url,
+    application::ApplicationSecurityPolicy::SecurityMode mode) {
   app_url_ = url;
   security_mode_ = mode;
 }
@@ -99,10 +105,21 @@ void XWalkRenderProcessObserver::OnSuspendJSEngine(bool is_suspend) {
   content::RenderThreadImpl* thread = content::RenderThreadImpl::current();
   thread->EnsureWebKitInitialized();
   if (is_suspend)
-    thread->webkit_platform_support()->SuspendSharedTimer();
+    thread->blink_platform_impl()->SuspendSharedTimer();
   else
-    thread->webkit_platform_support()->ResumeSharedTimer();
+    thread->blink_platform_impl()->ResumeSharedTimer();
   is_suspended_ = is_suspend;
 }
+
+#if defined(OS_TIZEN)
+void XWalkRenderProcessObserver::OnUserAgentChanged(
+    const std::string& userAgentString) {
+  overriden_user_agent_ = userAgentString;
+}
+
+std::string XWalkRenderProcessObserver::GetOverridenUserAgent() const {
+  return overriden_user_agent_;
+}
+#endif
 
 }  // namespace xwalk

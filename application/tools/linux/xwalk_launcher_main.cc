@@ -20,7 +20,7 @@
 #if defined(OS_TIZEN)
 #include "url/gurl.h"
 #include "xwalk/application/tools/linux/xwalk_launcher_tizen.h"
-#include "xwalk/application/tools/linux/xwalk_tizen_user.h"
+#include "xwalk/application/tools/tizen/xwalk_tizen_user.h"
 #endif
 
 static const char* xwalk_service_name = "org.crosswalkproject.Runtime1";
@@ -273,7 +273,7 @@ int main(int argc, char** argv) {
 #endif
 
 #if defined(OS_TIZEN)
-  if (xwalk_tizen_check_user_app())
+  if (xwalk_tizen_check_group_users())
     exit(1);
 #endif
 

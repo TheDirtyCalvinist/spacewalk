@@ -27,7 +27,7 @@ class SplashScreenTizen::SplashScreenLayerDelegate : public ui::LayerDelegate {
   void set_image(const gfx::Image& image) { image_ = image; }
   const gfx::Image& image() const { return image_; }
 
-  virtual void OnPaintLayer(gfx::Canvas* canvas) OVERRIDE {
+  void OnPaintLayer(gfx::Canvas* canvas) override {
     if (!image_.IsEmpty()) {
       canvas->DrawImageInt(image_.AsImageSkia(), 0, 0);
     } else {
@@ -35,10 +35,12 @@ class SplashScreenTizen::SplashScreenLayerDelegate : public ui::LayerDelegate {
     }
   }
 
-  // Override the pure virtual function.
-  virtual void OnDeviceScaleFactorChanged(float device_scale_factor) OVERRIDE {}
+  void OnDelegatedFrameDamage(
+      const gfx::Rect& damage_rect_in_dip) override {}
 
-  virtual base::Closure PrepareForLayerBoundsChange() OVERRIDE {
+  void OnDeviceScaleFactorChanged(float device_scale_factor) override {}
+
+  base::Closure PrepareForLayerBoundsChange() override {
     return base::Closure();
   }
 

@@ -1,4 +1,5 @@
 // Copyright (c) 2013 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +9,16 @@
 #include <string>
 #include <vector>
 
+#include "content/browser/renderer_host/media/audio_renderer_host.h"
+#include "content/browser/renderer_host/render_process_host_impl.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/render_process_host.h"
-#include "content/browser/screen_orientation/screen_orientation_dispatcher_host.h"
-#include "content/browser/screen_orientation/screen_orientation_provider.h"
+#include "content/public/browser/screen_orientation_dispatcher_host.h"
+#include "content/public/browser/screen_orientation_delegate.h"
+#include "content/public/browser/screen_orientation_provider.h"
 
+#include "xwalk/runtime/browser/xwalk_browser_context.h"
+#include "xwalk/runtime/browser/runtime_url_request_context_getter.h"
 #include "xwalk/runtime/browser/ui/native_app_window.h"
 #include "xwalk/runtime/browser/ui/native_app_window_tizen.h"
 #include "xwalk/runtime/common/xwalk_common_messages.h"
@@ -23,66 +29,131 @@
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/keyboard_codes_posix.h"
 #include "ui/events/platform/platform_event_source.h"
-#include "xwalk/application/common/manifest_handlers/tizen_setting_handler.h"
 #endif
 
 #include "xwalk/application/common/application_manifest_constants.h"
+#include "xwalk/application/common/manifest_handlers/tizen_setting_handler.h"
 #include "xwalk/application/common/manifest_handlers/tizen_splash_screen_handler.h"
 
 namespace xwalk {
 
+namespace keys = application_manifest_keys;
 namespace widget_keys = application_widget_keys;
 
 namespace application {
 
-class ScreenOrientationProviderTizen :
-    public content::ScreenOrientationProvider {
+const char kDefaultMediaAppClass[] = "player";
+namespace {
+#if defined(OS_TIZEN_MOBILE)
+void ApplyRootWindowParams(Runtime* runtime,
+                           NativeAppWindow::CreateParams* params) {
+  if (!params->delegate)
+    params->delegate = runtime;
+  if (params->bounds.IsEmpty())
+    params->bounds = gfx::Rect(0, 0, 840, 600);
+
+  unsigned int fullscreen_options = runtime->fullscreen_options();
+  if (params->state == ui::SHOW_STATE_FULLSCREEN)
+    fullscreen_options |= Runtime::FULLSCREEN_FOR_LAUNCH;
+  else
+    fullscreen_options &= ~Runtime::FULLSCREEN_FOR_LAUNCH;
+  runtime->set_fullscreen_options(fullscreen_options);
+}
+
+NativeAppWindow* CreateRootWindow(Runtime* runtime,
+                                  const NativeAppWindow::CreateParams& params) {
+  NativeAppWindow::CreateParams effective_params(params);
+  ApplyRootWindowParams(runtime, &effective_params);
+  return NativeAppWindow::Create(effective_params);
+}
+#endif
+}  // namespace
+
+blink::WebScreenOrientationLockType GetDefaultOrientation(
+    const base::WeakPtr<Application>& app) {
+  TizenSettingInfo* info = static_cast<TizenSettingInfo*>(
+    app->data()->GetManifestData(widget_keys::kTizenSettingKey));
+  if (!info)
+    return blink::WebScreenOrientationLockDefault;
+  switch (info->screen_orientation()) {
+    case TizenSettingInfo::PORTRAIT:
+      return blink::WebScreenOrientationLockPortrait;
+    case TizenSettingInfo::LANDSCAPE:
+      return blink::WebScreenOrientationLockLandscape;
+    case TizenSettingInfo::AUTO:
+      return blink::WebScreenOrientationLockAny;
+    default:
+      NOTREACHED();
+      return blink::WebScreenOrientationLockDefault;
+  }
+}
+
+class ScreenOrientationDelegateTizen :
+    public content::ScreenOrientationDelegate {
  public:
-  explicit ScreenOrientationProviderTizen(const base::WeakPtr<Application>& app)
+  ScreenOrientationDelegateTizen(
+      const base::WeakPtr<Application>& app,
+      content::ScreenOrientationDispatcherHost* dispatcher)
       : app_(app),
-        request_id_(0) {
+        dispatcher_(dispatcher) {
+    DCHECK(dispatcher_);
   }
 
-  virtual void LockOrientation(
-      int request_id,
-      blink::WebScreenOrientationLockType lock) OVERRIDE {
-    if (!app_)
+  bool FullScreenRequired(
+      content::WebContents* web_contents) override {
+    if (!app_) {
+      LOG(ERROR) << "Invalid app error";
+      return false;
+    }
+    return app_->IsFullScreenRequired();
+  }
+
+  void Lock(blink::WebScreenOrientationLockType lock) override {
+    if (!app_) {
+      LOG(ERROR) << "Invalid app error";
       return;
-    request_id_ = request_id;
-    const std::set<Runtime*>& runtimes = app_->runtimes();
+    }
+    const std::vector<Runtime*>& runtimes = app_->runtimes();
     DCHECK(!runtimes.empty());
     // FIXME: Probably need better alignment with
     // https://w3c.github.io/screen-orientation/#screen-orientation-lock-lifetime
-    std::set<Runtime*>::iterator it = runtimes.begin();
-    for (; it != runtimes.end(); ++it) {
+    for (auto it = runtimes.begin(); it != runtimes.end(); ++it) {
       NativeAppWindow* window = (*it)->window();
       if (window && window->IsActive()) {
         ToNativeAppWindowTizen(window)->LockOrientation(lock);
         break;
       }
     }
+    int request_id = app_->GetRenderProcessHostID();
+    dispatcher_->NotifyLockSuccess(request_id);
   }
 
-  virtual void UnlockOrientation() OVERRIDE {
-    LockOrientation(request_id_, blink::WebScreenOrientationLockDefault);
+  bool ScreenOrientationProviderSupported() override {
+    return true;
   }
 
-  virtual void OnOrientationChange() OVERRIDE {}
+  void Unlock() override {
+    Lock(GetDefaultOrientation(app_));
+  }
 
  private:
   base::WeakPtr<Application> app_;
-  int request_id_;
+  content::ScreenOrientationDispatcherHost* dispatcher_;
 };
 
 ApplicationTizen::ApplicationTizen(
     scoped_refptr<ApplicationData> data,
-    RuntimeContext* runtime_context,
-    Application::Observer* observer)
-    : Application(data, runtime_context, observer),
+    XWalkBrowserContext* browser_context)
+    : Application(data, browser_context),
+#if defined(OS_TIZEN_MOBILE)
+      root_window_(NULL),
+#endif
       is_suspended_(false) {
 #if defined(USE_OZONE)
   ui::PlatformEventSource::GetInstance()->AddPlatformEventObserver(this);
 #endif
+  cookie_manager_ = scoped_ptr<CookieManager>(
+      new CookieManager(id(), browser_context_));
 }
 
 ApplicationTizen::~ApplicationTizen() {
@@ -93,18 +164,53 @@ ApplicationTizen::~ApplicationTizen() {
 
 void ApplicationTizen::Hide() {
   DCHECK(!runtimes_.empty());
-  std::set<Runtime*>::iterator it = runtimes_.begin();
-  for (; it != runtimes_.end(); ++it) {
+  for (auto it = runtimes_.begin(); it != runtimes_.end(); ++it) {
     if ((*it)->window())
-      (*it)->window()->Hide();
+      (*it)->window()->Minimize();
+  }
+}
+
+void ApplicationTizen::Show() {
+  DCHECK(!runtimes_.empty());
+  for (Runtime* runtime : runtimes_) {
+    if (auto window = runtime->window())
+      window->Restore();
   }
 }
 
 bool ApplicationTizen::Launch(const LaunchParams& launch_params) {
   if (Application::Launch(launch_params)) {
+#if defined(OS_TIZEN_MOBILE)
+    if (!runtimes_.empty()) {
+      root_window_ = CreateRootWindow(*(runtimes_.begin()),
+                                      window_show_params_);
+      window_show_params_.parent = root_window_->GetNativeWindow();
+      root_window_->Show();
+    }
+#endif
     DCHECK(web_contents_);
-    web_contents_->GetScreenOrientationDispatcherHost()->
-        SetProvider(new ScreenOrientationProviderTizen(GetWeakPtr()));
+
+    // Get media class of application.
+    const Manifest* manifest = data_->GetManifest();
+    std::string app_class;
+    manifest->GetString(keys::kXWalkMediaAppClass, &app_class);
+    if (app_class.empty())
+      app_class = kDefaultMediaAppClass;
+
+    // Set an application ID and class, which are needed to tag audio
+    // streams in pulseaudio/Murphy.
+    scoped_refptr<content::AudioRendererHost> audio_host =
+        static_cast<content::RenderProcessHostImpl*>(render_process_host_)
+            ->audio_renderer_host();
+    if (audio_host.get())
+      audio_host->SetMediaStreamProperties(id(), app_class);
+
+    content::ScreenOrientationDispatcherHost* host =
+        web_contents_->GetScreenOrientationDispatcherHost();
+    content::ScreenOrientationDelegate* delegate =
+        new ScreenOrientationDelegateTizen(GetWeakPtr(), host);
+    content::ScreenOrientationProvider::SetDelegate(delegate);
+    delegate->Lock(GetDefaultOrientation(GetWeakPtr()));
     return true;
   }
   return false;
@@ -113,21 +219,28 @@ bool ApplicationTizen::Launch(const LaunchParams& launch_params) {
 base::FilePath ApplicationTizen::GetSplashScreenPath() {
   if (TizenSplashScreenInfo* ss_info = static_cast<TizenSplashScreenInfo*>(
       data()->GetManifestData(widget_keys::kTizenSplashScreenKey))) {
-    return data()->Path().Append(FILE_PATH_LITERAL(ss_info->src()));
+    return data()->path().Append(FILE_PATH_LITERAL(ss_info->src()));
   }
   return base::FilePath();
 }
 
+bool ApplicationTizen::CanBeSuspended() const {
+  if (TizenSettingInfo* setting = static_cast<TizenSettingInfo*>(
+          data()->GetManifestData(widget_keys::kTizenSettingKey))) {
+    return !setting->background_support_enabled();
+  }
+  return true;
+}
+
 void ApplicationTizen::Suspend() {
-  if (is_suspended_)
+  if (is_suspended_ || !CanBeSuspended())
     return;
 
   DCHECK(render_process_host_);
   render_process_host_->Send(new ViewMsg_SuspendJSEngine(true));
 
   DCHECK(!runtimes_.empty());
-  std::set<Runtime*>::iterator it = runtimes_.begin();
-  for (; it != runtimes_.end(); ++it) {
+  for (auto it = runtimes_.begin(); it != runtimes_.end(); ++it) {
     if ((*it)->web_contents())
       (*it)->web_contents()->WasHidden();
   }
@@ -135,15 +248,14 @@ void ApplicationTizen::Suspend() {
 }
 
 void ApplicationTizen::Resume() {
-  if (!is_suspended_)
+  if (!is_suspended_ || !CanBeSuspended())
     return;
 
   DCHECK(render_process_host_);
   render_process_host_->Send(new ViewMsg_SuspendJSEngine(false));
 
   DCHECK(!runtimes_.empty());
-  std::set<Runtime*>::iterator it = runtimes_.begin();
-  for (; it != runtimes_.end(); ++it) {
+  for (auto it = runtimes_.begin(); it != runtimes_.end(); ++it) {
     if ((*it)->web_contents())
       (*it)->web_contents()->WasShown();
   }
@@ -175,13 +287,42 @@ void ApplicationTizen::DidProcessEvent(
   if (info && !info->hwkey_enabled())
     return;
 
-  for (std::set<xwalk::Runtime*>::iterator it = runtimes_.begin();
+  for (auto it = runtimes_.begin();
       it != runtimes_.end(); ++it) {
     (*it)->web_contents()->GetRenderViewHost()->Send(new ViewMsg_HWKeyPressed(
         (*it)->web_contents()->GetRoutingID(), key_event->key_code()));
   }
 }
 #endif
+
+void ApplicationTizen::RemoveAllCookies() {
+  cookie_manager_->RemoveAllCookies();
+}
+
+void ApplicationTizen::SetUserAgentString(
+    const std::string& user_agent_string) {
+  cookie_manager_->SetUserAgentString(render_process_host_, user_agent_string);
+}
+
+void ApplicationTizen::OnNewRuntimeAdded(Runtime* runtime) {
+  DCHECK(runtime);
+  Application::OnNewRuntimeAdded(runtime);
+#if defined(OS_TIZEN_MOBILE)
+  if (root_window_ && runtimes_.size() > 1)
+      root_window_->Show();
+#endif
+}
+
+void ApplicationTizen::OnRuntimeClosed(Runtime* runtime) {
+  DCHECK(runtime);
+  Application::OnRuntimeClosed(runtime);
+#if defined(OS_TIZEN_MOBILE)
+  if (runtimes_.empty() && root_window_) {
+    root_window_->Close();
+    root_window_ = NULL;
+  }
+#endif
+}
 
 }  // namespace application
 }  // namespace xwalk

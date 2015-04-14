@@ -7,7 +7,7 @@
 #include <map>
 #include <utility>
 
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "xwalk/application/common/application_manifest_constants.h"
 
@@ -58,7 +58,7 @@ bool TizenSplashScreenHandler::Validate(
   splash_screen->GetAsDictionary(&ss_dict);
   std::string ss_src;
   ss_dict->GetString(keys::kTizenSplashScreenSrcKey, &ss_src);
-  base::FilePath path = application->Path().Append(FILE_PATH_LITERAL(ss_src));
+  base::FilePath path = application->path().Append(FILE_PATH_LITERAL(ss_src));
   if (!base::PathExists(path)) {
     *error = std::string("The splash screen image does not exist");
     return false;

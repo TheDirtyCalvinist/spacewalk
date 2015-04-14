@@ -34,8 +34,8 @@
 #include "xwalk/runtime/browser/android/xwalk_contents_client_bridge_base.h"
 #include "xwalk/runtime/browser/android/xwalk_contents_io_thread_client_impl.h"
 #include "xwalk/runtime/browser/android/xwalk_web_contents_delegate.h"
-#include "xwalk/runtime/browser/runtime_context.h"
 #include "xwalk/runtime/browser/runtime_resource_dispatcher_host_delegate_android.h"
+#include "xwalk/runtime/browser/xwalk_browser_context.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
 #include "jni/XWalkContent_jni.h"
 
@@ -106,20 +106,6 @@ bool ManifestGetString(const xwalk::application::Manifest& manifest,
 
 }  // namespace
 
-XWalkContent::XWalkContent(JNIEnv* env,
-                           jobject obj,
-                           jobject web_contents_delegate,
-                           jobject contents_client_bridge)
-    : java_ref_(env, obj),
-      web_contents_delegate_(
-          new XWalkWebContentsDelegate(env, web_contents_delegate)),
-      contents_client_bridge_(
-          new XWalkContentsClientBridge(env, contents_client_bridge)) {
-}
-
-XWalkContent::~XWalkContent() {
-}
-
 // static
 XWalkContent* XWalkContent::FromID(int render_process_id,
                                    int render_view_id) {
@@ -139,54 +125,77 @@ XWalkContent* XWalkContent::FromWebContents(
   return XWalkContentUserData::GetContents(web_contents);
 }
 
-jlong XWalkContent::GetWebContents(
-    JNIEnv* env, jobject obj, jobject io_thread_client,
-    jobject intercept_navigation_delegate) {
-  if (!web_contents_) {
-    web_contents_.reset(CreateWebContents(env, io_thread_client,
-                                          intercept_navigation_delegate));
-
-    render_view_host_ext_.reset(
-        new XWalkRenderViewHostExt(web_contents_.get()));
-  }
-  return reinterpret_cast<intptr_t>(web_contents_.get());
+XWalkContent::XWalkContent(scoped_ptr<content::WebContents> web_contents)
+    : web_contents_(web_contents.Pass()) {
 }
 
-content::WebContents* XWalkContent::CreateWebContents(
-    JNIEnv* env, jobject io_thread_client,
-    jobject intercept_navigation_delegate) {
+XWalkContent::~XWalkContent() {
+}
 
-  RuntimeContext* runtime_context =
-      XWalkRunner::GetInstance()->runtime_context();
-  CHECK(runtime_context);
+void XWalkContent::SetJavaPeers(JNIEnv* env,
+                                jobject obj,
+                                jobject xwalk_content,
+                                jobject web_contents_delegate,
+                                jobject contents_client_bridge,
+                                jobject io_thread_client,
+                                jobject intercept_navigation_delegate) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  java_ref_ = JavaObjectWeakGlobalRef(env, xwalk_content);
 
-  content::WebContents* web_contents = content::WebContents::Create(
-      content::WebContents::CreateParams(runtime_context));
+  web_contents_delegate_.reset(new XWalkWebContentsDelegate(
+      env, web_contents_delegate));
+  contents_client_bridge_.reset(new XWalkContentsClientBridge(
+      env, contents_client_bridge, web_contents_.get()));
 
-  web_contents->SetUserData(kXWalkContentUserDataKey,
-                            new XWalkContentUserData(this));
+  web_contents_->SetUserData(
+      kXWalkContentUserDataKey, new XWalkContentUserData(this));
 
-  XWalkContentsIoThreadClientImpl::RegisterPendingContents(web_contents);
+  XWalkContentsIoThreadClientImpl::RegisterPendingContents(web_contents_.get());
 
   // XWalk does not use disambiguation popup for multiple targets.
   content::RendererPreferences* prefs =
-      web_contents->GetMutableRendererPrefs();
+      web_contents_->GetMutableRendererPrefs();
   prefs->tap_multiple_targets_strategy =
       content::TAP_MULTIPLE_TARGETS_STRATEGY_NONE;
 
-  XWalkContentsClientBridgeBase::Associate(web_contents,
+  XWalkContentsClientBridgeBase::Associate(web_contents_.get(),
       contents_client_bridge_.get());
-  XWalkContentsIoThreadClientImpl::Associate(web_contents,
+  XWalkContentsIoThreadClientImpl::Associate(web_contents_.get(),
       ScopedJavaLocalRef<jobject>(env, io_thread_client));
-  int render_process_id = web_contents->GetRenderProcessHost()->GetID();
-  int render_frame_id = web_contents->GetRoutingID();
+  int render_process_id = web_contents_->GetRenderProcessHost()->GetID();
+  int render_frame_id = web_contents_->GetRoutingID();
   RuntimeResourceDispatcherHostDelegateAndroid::OnIoThreadClientReady(
       render_process_id, render_frame_id);
-  InterceptNavigationDelegate::Associate(web_contents,
+  InterceptNavigationDelegate::Associate(web_contents_.get(),
       make_scoped_ptr(new InterceptNavigationDelegate(
           env, intercept_navigation_delegate)));
-  web_contents->SetDelegate(web_contents_delegate_.get());
-  return web_contents;
+  web_contents_->SetDelegate(web_contents_delegate_.get());
+
+  render_view_host_ext_.reset(new XWalkRenderViewHostExt(web_contents_.get()));
+}
+
+jlong XWalkContent::GetWebContents(JNIEnv* env, jobject obj) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  DCHECK(web_contents_);
+  return reinterpret_cast<intptr_t>(web_contents_.get());
+}
+
+void XWalkContent::SetPendingWebContentsForPopup(
+    scoped_ptr<content::WebContents> pending) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  if (pending_contents_.get()) {
+    // TODO(benm): Support holding multiple pop up window requests.
+    LOG(WARNING) << "Blocking popup window creation as an outstanding "
+                 << "popup window is still pending.";
+    base::MessageLoop::current()->DeleteSoon(FROM_HERE, pending.release());
+    return;
+  }
+  pending_contents_.reset(new XWalkContent(pending.Pass()));
+}
+
+jlong XWalkContent::ReleasePopupXWalkContent(JNIEnv* env, jobject obj) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  return reinterpret_cast<intptr_t>(pending_contents_.release());
 }
 
 void XWalkContent::ClearCache(
@@ -274,23 +283,24 @@ jboolean XWalkContent::SetManifest(JNIEnv* env,
 
   std::string csp;
   ManifestGetString(manifest, keys::kCSPKey, keys::kDeprecatedCSPKey, &csp);
-  RuntimeContext* runtime_context =
-      XWalkRunner::GetInstance()->runtime_context();
-  CHECK(runtime_context);
-  runtime_context->SetCSPString(csp);
+  XWalkBrowserContext* browser_context =
+      XWalkRunner::GetInstance()->browser_context();
+  CHECK(browser_context);
+  browser_context->SetCSPString(csp);
 
   ScopedJavaLocalRef<jstring> url_buffer =
       base::android::ConvertUTF8ToJavaString(env, url);
 
   if (manifest.HasPath(kDisplay)) {
     std::string display_string;
-    manifest.GetString(kDisplay, &display_string);
-    // TODO(David): update the handling process of the display strings
-    // including fullscreen etc.
-    bool display_as_fullscreen = (
-        display_string.find("fullscreen") != std::string::npos);
-    Java_XWalkContent_onGetFullscreenFlagFromManifest(
-        env, obj, display_as_fullscreen ? JNI_TRUE : JNI_FALSE);
+    if (manifest.GetString(kDisplay, &display_string)) {
+      // TODO(David): update the handling process of the display strings
+      // including fullscreen etc.
+      bool display_as_fullscreen =
+          LowerCaseEqualsASCII(display_string, "fullscreen");
+      Java_XWalkContent_onGetFullscreenFlagFromManifest(
+          env, obj, display_as_fullscreen ? JNI_TRUE : JNI_FALSE);
+    }
   }
 
   // Check whether need to display launch screen. (Read from manifest.json)
@@ -396,15 +406,15 @@ jboolean XWalkContent::SetState(JNIEnv* env, jobject obj, jbyteArray state) {
   return RestoreFromPickle(&iterator, web_contents_.get());
 }
 
-static jlong Init(JNIEnv* env, jobject obj, jobject web_contents_delegate,
-    jobject contents_client_bridge) {
-  XWalkContent* xwalk_core_content =
-    new XWalkContent(env, obj, web_contents_delegate, contents_client_bridge);
-  return reinterpret_cast<intptr_t>(xwalk_core_content);
+static jlong Init(JNIEnv* env, jobject obj) {
+  scoped_ptr<WebContents> web_contents(content::WebContents::Create(
+      content::WebContents::CreateParams(
+          XWalkRunner::GetInstance()->browser_context())));
+  return reinterpret_cast<intptr_t>(new XWalkContent(web_contents.Pass()));
 }
 
 bool RegisterXWalkContent(JNIEnv* env) {
-  return RegisterNativesImpl(env) >= 0;
+  return RegisterNativesImpl(env);
 }
 
 namespace {
@@ -491,4 +501,11 @@ void XWalkContent::HideGeolocationPrompt(const GURL& origin) {
     }
   }
 }
+
+// Called by Java.
+void XWalkContent::SetBackgroundColor(JNIEnv* env, jobject obj, jint color) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  render_view_host_ext_->SetBackgroundColor(color);
+}
+
 }  // namespace xwalk

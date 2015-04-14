@@ -29,6 +29,28 @@
     ['tizen==1', {
       'targets': [
         {
+          'target_name': 'tizen_tzplatform_config',
+          'type': 'none',
+          'variables': {
+            'packages': [
+              'libtzplatform-config',
+            ],
+          },
+          'direct_dependent_settings': {
+            'cflags': [
+              '<!@(pkg-config --cflags <@(packages))',
+            ],
+          },
+          'link_settings': {
+            'ldflags': [
+              '<!@(pkg-config --libs-only-L --libs-only-other <@(packages))',
+            ],
+            'libraries': [
+              '<!@(pkg-config --libs-only-l <@(packages))',
+            ],
+          },
+        },
+        {
           'target_name': 'tizen_geolocation',
           'type': 'none',
           'variables': {
@@ -58,10 +80,13 @@
             'packages': [
               'ail',
               'dlog',
+              'nss',
+              'nspr',
               'pkgmgr-parser',
               'pkgmgr-info',
               'pkgmgr-installer',
               'pkgmgr',
+              'secure-storage',
               'vconf',
             ],
           },
@@ -168,6 +193,23 @@
             ],
           },
         },
+        {
+          'target_name': 'xmlsec',
+          'type': 'none',
+          'direct_dependent_settings': {
+            'cflags': [
+              '<!@(pkg-config --cflags xmlsec1)',
+            ],
+          },
+          'link_settings': {
+            'ldflags': [
+              '<!@(pkg-config --libs-only-L --libs-only-other xmlsec1)',
+            ],
+            'libraries': [
+              '<!@(pkg-config --libs-only-l xmlsec1)',
+            ],
+          },
+        }
       ],  # targets
     }],
   ],  # conditions

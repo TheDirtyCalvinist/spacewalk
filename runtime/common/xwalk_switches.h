@@ -17,6 +17,11 @@ extern const char kFullscreen[];
 extern const char kListFeaturesFlags[];
 extern const char kXWalkAllowExternalExtensionsForRemoteSources[];
 extern const char kXWalkDataPath[];
+extern const char kXWalkDisableSharedProcessMode[];
+
+#if defined(OS_ANDROID)
+extern const char kXWalkProfileName[];
+#endif
 
 #if defined(OS_ANDROID)
 extern const char kXWalkProfileName[];

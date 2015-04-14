@@ -11,7 +11,7 @@
 namespace xwalk {
 
 jboolean IsLibraryBuiltForIA(JNIEnv* env, jclass jcaller) {
-#if defined(ARCH_CPU_X86)
+#if defined(ARCH_CPU_X86) || defined(ARCH_CPU_X86_64)
   return JNI_TRUE;
 #else
   return JNI_FALSE;
@@ -19,7 +19,7 @@ jboolean IsLibraryBuiltForIA(JNIEnv* env, jclass jcaller) {
 }
 
 bool RegisterXWalkViewDelegate(JNIEnv* env) {
-  return RegisterNativesImpl(env) >= 0;
+  return RegisterNativesImpl(env);
 }
 
 }  // namespace xwalk

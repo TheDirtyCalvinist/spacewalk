@@ -16,7 +16,10 @@
 #include "content/public/browser/child_process_data.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_widget_host.h"
+#include "content/public/browser/render_widget_host_iterator.h"
 #include "content/public/browser/resource_context.h"
+#include "content/public/browser/resource_dispatcher_host.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/main_function_params.h"
@@ -26,13 +29,14 @@
 #include "ppapi/host/ppapi_host.h"
 #include "xwalk/extensions/common/xwalk_extension_switches.h"
 #include "xwalk/application/common/constants.h"
-#include "xwalk/runtime/browser/xwalk_browser_main_parts.h"
+#include "xwalk/runtime/browser/devtools/xwalk_devtools_delegate.h"
 #include "xwalk/runtime/browser/geolocation/xwalk_access_token_store.h"
 #include "xwalk/runtime/browser/media/media_capture_devices_dispatcher.h"
 #include "xwalk/runtime/browser/renderer_host/pepper/xwalk_browser_pepper_host_factory.h"
-#include "xwalk/runtime/browser/runtime_context.h"
 #include "xwalk/runtime/browser/runtime_quota_permission_context.h"
 #include "xwalk/runtime/browser/speech/speech_recognition_manager_delegate.h"
+#include "xwalk/runtime/browser/xwalk_browser_context.h"
+#include "xwalk/runtime/browser/xwalk_browser_main_parts.h"
 #include "xwalk/runtime/browser/xwalk_render_message_filter.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
 #include "xwalk/runtime/common/xwalk_paths.h"
@@ -50,7 +54,6 @@
 #include "xwalk/runtime/browser/android/xwalk_cookie_access_policy.h"
 #include "xwalk/runtime/browser/android/xwalk_contents_client_bridge.h"
 #include "xwalk/runtime/browser/android/xwalk_web_contents_view_delegate.h"
-#include "xwalk/runtime/browser/runtime_resource_dispatcher_host_delegate_android.h"
 #include "xwalk/runtime/browser/xwalk_browser_main_parts_android.h"
 #include "xwalk/runtime/common/android/xwalk_globals_android.h"
 #else
@@ -65,8 +68,9 @@
 
 #if defined(OS_TIZEN)
 #include "xwalk/application/common/application_manifest_constants.h"
-#include "xwalk/application/common/manifest_handlers/navigation_handler.h"
+#include "xwalk/runtime/browser/geolocation/tizen/location_provider_tizen.h"
 #include "xwalk/runtime/browser/runtime_platform_util.h"
+#include "xwalk/runtime/browser/tizen/xwalk_web_contents_view_delegate.h"
 #include "xwalk/runtime/browser/xwalk_browser_main_parts_tizen.h"
 #endif
 
@@ -75,7 +79,7 @@ namespace xwalk {
 namespace {
 
 // The application-wide singleton of ContentBrowserClient impl.
-XWalkContentBrowserClient* g_browser_client = NULL;
+XWalkContentBrowserClient* g_browser_client = nullptr;
 
 }  // namespace
 
@@ -87,15 +91,16 @@ XWalkContentBrowserClient* XWalkContentBrowserClient::Get() {
 
 XWalkContentBrowserClient::XWalkContentBrowserClient(XWalkRunner* xwalk_runner)
     : xwalk_runner_(xwalk_runner),
-      url_request_context_getter_(NULL),
-      main_parts_(NULL) {
+      url_request_context_getter_(nullptr),
+      main_parts_(nullptr),
+      browser_context_(xwalk_runner->browser_context()) {
   DCHECK(!g_browser_client);
   g_browser_client = this;
 }
 
 XWalkContentBrowserClient::~XWalkContentBrowserClient() {
   DCHECK(g_browser_client);
-  g_browser_client = NULL;
+  g_browser_client = nullptr;
 }
 
 content::BrowserMainParts* XWalkContentBrowserClient::CreateBrowserMainParts(
@@ -117,9 +122,8 @@ net::URLRequestContextGetter* XWalkContentBrowserClient::CreateRequestContext(
     content::BrowserContext* browser_context,
     content::ProtocolHandlerMap* protocol_handlers,
     content::URLRequestInterceptorScopedVector request_interceptors) {
-  url_request_context_getter_ = static_cast<RuntimeContext*>(browser_context)->
+  return static_cast<XWalkBrowserContext*>(browser_context)->
       CreateRequestContext(protocol_handlers, request_interceptors.Pass());
-  return url_request_context_getter_;
 }
 
 net::URLRequestContextGetter*
@@ -129,7 +133,7 @@ XWalkContentBrowserClient::CreateRequestContextForStoragePartition(
     bool in_memory,
     content::ProtocolHandlerMap* protocol_handlers,
     content::URLRequestInterceptorScopedVector request_interceptors) {
-  return static_cast<RuntimeContext*>(browser_context)->
+  return static_cast<XWalkBrowserContext*>(browser_context)->
       CreateRequestContextForStoragePartition(
           partition_path, in_memory, protocol_handlers,
           request_interceptors.Pass());
@@ -165,8 +169,11 @@ XWalkContentBrowserClient::GetWebContentsViewDelegate(
     content::WebContents* web_contents) {
 #if defined(OS_ANDROID)
   return new XWalkWebContentsViewDelegate(web_contents);
+#elif defined(OS_TIZEN)
+  return new XWalkWebContentsViewDelegate(
+      web_contents, xwalk_runner_->app_system()->application_service());
 #else
-  return NULL;
+  return nullptr;
 #endif
 }
 
@@ -264,12 +271,6 @@ void XWalkContentBrowserClient::AllowCertificateError(
 #endif
 }
 
-void XWalkContentBrowserClient::RequestDesktopNotificationPermission(
-    const GURL& source_origin,
-    content::RenderFrameHost* render_frame_host,
-    const base::Callback<void(blink::WebNotificationPermission)>& callback) {
-}
-
 blink::WebNotificationPermission
 XWalkContentBrowserClient::CheckDesktopNotificationPermission(
     const GURL& source_url,
@@ -284,37 +285,73 @@ XWalkContentBrowserClient::CheckDesktopNotificationPermission(
 
 void XWalkContentBrowserClient::ShowDesktopNotification(
     const content::ShowDesktopNotificationHostMsgParams& params,
-    content::RenderFrameHost* render_frame_host,
+    content::BrowserContext* browser_context,
+    int render_process_id,
     scoped_ptr<content::DesktopNotificationDelegate> delegate,
     base::Closure* cancel_callback) {
 #if defined(OS_ANDROID)
-  XWalkContentsClientBridgeBase* bridge =
-      XWalkContentsClientBridgeBase::FromRenderFrameHost(render_frame_host);
-  bridge->ShowNotification(params, render_frame_host,
-      delegate.Pass(), cancel_callback);
+  scoped_ptr<content::RenderWidgetHostIterator> widgets(
+      content::RenderWidgetHost::GetRenderWidgetHosts());
+  while (content::RenderWidgetHost* rwh = widgets->GetNextHost()) {
+    if (!rwh->GetProcess() || rwh->GetProcess()->GetID() != render_process_id)
+      continue;
+    content::RenderViewHost* rvh = content::RenderViewHost::From(rwh);
+    if (!rvh)
+      continue;
+    content::WebContents* web_contents =
+        content::WebContents::FromRenderViewHost(rvh);
+    if (!web_contents)
+      continue;
+    XWalkContentsClientBridgeBase* bridge =
+        XWalkContentsClientBridgeBase::FromWebContents(web_contents);
+    bridge->ShowNotification(params, delegate.Pass(), cancel_callback);
+    return;
+  }
 #endif
 }
 
-void XWalkContentBrowserClient::RequestGeolocationPermission(
+void XWalkContentBrowserClient::RequestPermission(
+    content::PermissionType permission,
     content::WebContents* web_contents,
     int bridge_id,
     const GURL& requesting_frame,
     bool user_gesture,
-    base::Callback<void(bool)> result_callback,
-    base::Closure* cancel_callback) {
+    const base::Callback<void(bool)>& result_callback) {
+  switch (permission) {
+    case content::PERMISSION_GEOLOCATION:
 #if defined(OS_ANDROID) || defined(OS_TIZEN)
-  if (!geolocation_permission_context_) {
-    geolocation_permission_context_ =
-      new RuntimeGeolocationPermissionContext();
-  }
-  geolocation_permission_context_->RequestGeolocationPermission(
-    web_contents,
-    requesting_frame,
-    result_callback,
-    cancel_callback);
+    if (!geolocation_permission_context_.get()) {
+      geolocation_permission_context_ =
+        new RuntimeGeolocationPermissionContext();
+    }
+    geolocation_permission_context_->RequestGeolocationPermission(
+        web_contents, requesting_frame, result_callback);
 #else
-  result_callback.Run(false);
+    result_callback.Run(false);
 #endif
+      break;
+    case content::PERMISSION_NOTIFICATIONS:
+    default:
+      break;
+    }
+}
+
+void XWalkContentBrowserClient::CancelPermissionRequest(
+    content::PermissionType permission,
+    content::WebContents* web_contents,
+    int bridge_id,
+    const GURL& requesting_frame) {
+  switch (permission) {
+    case content::PERMISSION_GEOLOCATION:
+#if defined(OS_ANDROID) || defined(OS_TIZEN)
+      geolocation_permission_context_->CancelGeolocationPermissionRequest(
+          web_contents, requesting_frame);
+#endif
+      break;
+    case content::PERMISSION_NOTIFICATIONS:
+    default:
+      break;
+  }
 }
 
 void XWalkContentBrowserClient::DidCreatePpapiPlugin(
@@ -342,13 +379,15 @@ content::BrowserPpapiHost*
     ++iter;
   }
 #endif
-  return NULL;
+  return nullptr;
 }
 
-#if defined(OS_ANDROID)
+#if defined(OS_ANDROID) || defined(OS_TIZEN)  || defined(OS_LINUX)
 void XWalkContentBrowserClient::ResourceDispatcherHostCreated() {
-  RuntimeResourceDispatcherHostDelegateAndroid::
-  ResourceDispatcherHostCreated();
+  resource_dispatcher_host_delegate_ =
+      (RuntimeResourceDispatcherHostDelegate::Create()).Pass();
+  content::ResourceDispatcherHost::Get()->SetDelegate(
+      resource_dispatcher_host_delegate_.get());
 }
 #endif
 
@@ -392,6 +431,14 @@ bool XWalkContentBrowserClient::CanCreateWindow(const GURL& opener_url,
 }
 #endif
 
+content::LocationProvider*
+XWalkContentBrowserClient::OverrideSystemLocationProvider() {
+#if defined(OS_TIZEN)
+  return new LocationProviderTizen();
+#else
+  return nullptr;
+#endif
+}
 
 void XWalkContentBrowserClient::GetStoragePartitionConfigForSite(
     content::BrowserContext* browser_context,
@@ -408,6 +455,11 @@ void XWalkContentBrowserClient::GetStoragePartitionConfigForSite(
   if (site.SchemeIs(application::kApplicationScheme))
     *partition_domain = site.host();
 #endif
+}
+
+content::DevToolsManagerDelegate*
+  XWalkContentBrowserClient::GetDevToolsManagerDelegate() {
+  return new XWalkDevToolsDelegate(browser_context_);
 }
 
 }  // namespace xwalk

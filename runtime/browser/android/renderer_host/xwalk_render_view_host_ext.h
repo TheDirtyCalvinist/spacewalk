@@ -62,6 +62,7 @@ class XWalkRenderViewHostExt : public content::WebContentsObserver,
   // the meta viewport tag.
   void SetInitialPageScale(double page_scale_factor);
   void SetJsOnlineProperty(bool network_up);
+  void SetBackgroundColor(SkColor c);
 
   // Sets the white list for Cross-Origin access.
   void SetOriginAccessWhitelist(const std::string& base_url,
@@ -69,13 +70,13 @@ class XWalkRenderViewHostExt : public content::WebContentsObserver,
 
  private:
   // content::WebContentsObserver implementation.
-  virtual void RenderViewCreated(
-      content::RenderViewHost* render_view_host) OVERRIDE;
-  virtual void RenderProcessGone(base::TerminationStatus status) OVERRIDE;
-  virtual void DidNavigateAnyFrame(
+  void RenderViewCreated(content::RenderViewHost* render_view_host) override;
+  void RenderProcessGone(base::TerminationStatus status) override;
+  void DidNavigateAnyFrame(
+      content::RenderFrameHost* render_frame_host,
       const content::LoadCommittedDetails& details,
-      const content::FrameNavigateParams& params) OVERRIDE;
-  virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE;
+      const content::FrameNavigateParams& params) override;
+  bool OnMessageReceived(const IPC::Message& message) override;
 
   void OnDocumentHasImagesResponse(int msg_id, bool has_images);
   void OnUpdateHitTestData(const XWalkHitTestData& hit_test_data);

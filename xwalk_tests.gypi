@@ -33,13 +33,14 @@
         'xwalk_runtime',
       ],
       'sources': [
-        'application/common/application_storage_impl_unittest.cc',
-        'application/common/installer/package_unittest.cc',
+        'application/common/package/package_unittest.cc',
         'application/common/application_unittest.cc',
         'application/common/application_file_util_unittest.cc',
         'application/common/id_util_unittest.cc',
         'application/common/manifest_handlers/csp_handler_unittest.cc',
         'application/common/manifest_handlers/permissions_handler_unittest.cc',
+        'application/common/manifest_handlers/unittest_util.cc',
+        'application/common/manifest_handlers/unittest_util.h',
         'application/common/manifest_handlers/warp_handler_unittest.cc',
         'application/common/manifest_handlers/widget_handler_unittest.cc',
         'application/common/manifest_handler_unittest.cc',
@@ -58,7 +59,9 @@
         }],
         ['tizen==1', {
           'sources': [
-            'application/common/manifest_handlers/navigation_handler_unittest.cc',
+            'application/common/manifest_handlers/tizen_appwidget_handler_unittest.cc',
+            'application/common/manifest_handlers/tizen_metadata_handler_unittest.cc',
+            'application/common/manifest_handlers/tizen_navigation_handler_unittest.cc',
           ],
         }],
       ],
@@ -91,7 +94,7 @@
       'sources': [
         'application/test/application_browsertest.cc',
         'application/test/application_browsertest.h',
-        'application/test/application_multi_app_test.cc',
+        'application/test/application_test.cc',
         'application/test/application_testapi.cc',
         'application/test/application_testapi.h',
         'application/test/application_testapi_test.cc',

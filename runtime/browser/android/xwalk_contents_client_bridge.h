@@ -17,6 +17,7 @@
 #include "base/id_map.h"
 #include "content/public/browser/javascript_dialog_manager.h"
 #include "xwalk/runtime/browser/android/xwalk_contents_client_bridge_base.h"
+#include "xwalk/runtime/browser/android/xwalk_icon_helper.h"
 
 namespace gfx {
 class Size;
@@ -24,6 +25,10 @@ class Size;
 
 namespace net {
 class X509Certificate;
+}
+
+namespace content {
+class WebContents;
 }
 
 class SkBitmap;
@@ -37,54 +42,44 @@ namespace xwalk {
 // indirect refs from the Application (via callbacks) and so can outlive
 // XWalkView, this class notifies it before being destroyed and to nullify
 // any references.
-class XWalkContentsClientBridge : public XWalkContentsClientBridgeBase {
+class XWalkContentsClientBridge : public XWalkContentsClientBridgeBase ,
+                                  public XWalkIconHelper::Listener {
  public:
-  XWalkContentsClientBridge(JNIEnv* env, jobject obj);
+  XWalkContentsClientBridge(JNIEnv* env, jobject obj,
+                            content::WebContents* web_contents);
   virtual ~XWalkContentsClientBridge();
 
   // XWalkContentsClientBridgeBase implementation
-  virtual void AllowCertificateError(int cert_error,
-                                     net::X509Certificate* cert,
-                                     const GURL& request_url,
-                                     const base::Callback<void(bool)>& callback, // NOLINT
-                                     bool* cancel_request) OVERRIDE;
+  void AllowCertificateError(int cert_error,
+                             net::X509Certificate* cert,
+                             const GURL& request_url,
+                             const base::Callback<void(bool)>& callback, // NOLINT
+                             bool* cancel_request) override;
 
-  virtual void RunJavaScriptDialog(
+  void RunJavaScriptDialog(
       content::JavaScriptMessageType message_type,
       const GURL& origin_url,
       const base::string16& message_text,
       const base::string16& default_prompt_text,
       const content::JavaScriptDialogManager::DialogClosedCallback& callback)
-      OVERRIDE;
-  virtual void RunBeforeUnloadDialog(
+      override;
+  void RunBeforeUnloadDialog(
       const GURL& origin_url,
       const base::string16& message_text,
       const content::JavaScriptDialogManager::DialogClosedCallback& callback)
-      OVERRIDE;
-  virtual void ShowNotification(
+      override;
+  void ShowNotification(
       const content::ShowDesktopNotificationHostMsgParams& params,
-      content::RenderFrameHost* render_frame_host,
       scoped_ptr<content::DesktopNotificationDelegate> delegate,
       base::Closure* cancel_callback)
-      OVERRIDE;
-  virtual void UpdateNotificationIcon(
-      int notification_id,
-      const SkBitmap& icon)
-      OVERRIDE;
-  virtual void OnWebLayoutPageScaleFactorChanged(
+      override;
+  void OnWebLayoutPageScaleFactorChanged(
       float page_scale_factor)
-      OVERRIDE;
+      override;
 
   bool OnReceivedHttpAuthRequest(const base::android::JavaRef<jobject>& handler,
                                  const std::string& host,
                                  const std::string& realm);
-
-  void OnNotificationIconDownloaded(
-      int id,
-      int http_status_code,
-      const GURL& image_url,
-      const std::vector<SkBitmap>& bitmaps,
-      const std::vector<gfx::Size>& original_bitmap_sizes);
 
   // Methods called from Java.
   void ProceedSslError(JNIEnv* env, jobject obj, jboolean proceed, jint id);
@@ -92,7 +87,6 @@ class XWalkContentsClientBridge : public XWalkContentsClientBridgeBase {
   void CancelJsResult(JNIEnv*, jobject, int id);
   void ExitFullscreen(JNIEnv*, jobject, jlong web_contents);
   void NotificationDisplayed(JNIEnv*, jobject, jint id);
-  void NotificationError(JNIEnv*, jobject, jint id);
   void NotificationClicked(JNIEnv*, jobject, jint id);
   void NotificationClosed(JNIEnv*, jobject, jint id, bool by_user);
   void OnFilesSelected(
@@ -100,6 +94,11 @@ class XWalkContentsClientBridge : public XWalkContentsClientBridgeBase {
       int mode, jstring filepath, jstring display_name);
   void OnFilesNotSelected(
       JNIEnv*, jobject, int process_id, int render_id, int mode);
+  void DownloadIcon(JNIEnv* env, jobject obj, jstring url);
+
+  // XWalkIconHelper::Listener Interface
+  virtual void OnIconAvailable(const GURL& icon_url);
+  virtual void OnReceivedIcon(const GURL& icon_url, const SkBitmap& bitmap);
 
  private:
   JavaObjectWeakGlobalRef java_ref_;
@@ -111,9 +110,8 @@ class XWalkContentsClientBridge : public XWalkContentsClientBridgeBase {
 
   typedef std::pair<int, content::RenderFrameHost*>
     NotificationDownloadRequestInfos;
-  typedef std::map<int, NotificationDownloadRequestInfos >
-    NotificationDownloadRequestIdMap;
-  NotificationDownloadRequestIdMap downloading_icon_notifications_;
+
+  scoped_ptr<XWalkIconHelper> icon_helper_;
 };
 
 bool RegisterXWalkContentsClientBridge(JNIEnv* env);

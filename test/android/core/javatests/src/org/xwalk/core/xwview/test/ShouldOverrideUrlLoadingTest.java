@@ -15,8 +15,9 @@ import java.util.List;
 
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
-import org.chromium.content.browser.LoadUrlParams;
+import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content.browser.test.util.CallbackHelper;
+import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnPageFinishedHelper;
 import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnPageStartedHelper;
 import org.chromium.content.browser.test.util.TestCallbackHelperContainer.OnReceivedErrorHelper;
 import org.chromium.net.test.util.TestWebServer;
@@ -32,13 +33,15 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
     private static final String REDIRECT_TARGET_PATH = "/redirect_target.html";
     private static final String TITLE = "TITLE";
     private TestHelperBridge.ShouldOverrideUrlLoadingHelper mShouldOverrideUrlLoadingHelper;
+    private OnPageFinishedHelper mOnPageFinishedHelper;
     private TestWebServer mWebServer;
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
         mShouldOverrideUrlLoadingHelper = mTestHelperBridge.getShouldOverrideUrlLoadingHelper();
-        mWebServer = new TestWebServer(false);
+        mOnPageFinishedHelper = mTestHelperBridge.getOnPageFinishedHelper();
+        mWebServer = TestWebServer.start();
     }
 
     @Override
@@ -172,7 +175,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
         final int shouldOverrideUrlLoadingCallCount = mShouldOverrideUrlLoadingHelper.getCallCount();
         final int onPageStartedCallCount = onPageStartedHelper.getCallCount();
         setShouldOverrideUrlLoadingReturnValueOnUiThread(true);
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(shouldOverrideUrlLoadingCallCount);
         assertEquals(onPageStartedCallCount, onPageStartedHelper.getCallCount());
@@ -191,7 +194,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
 
         setShouldOverrideUrlLoadingReturnValueOnUiThread(true);
 
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(shouldOverrideUrlLoadingCallCount);
 
@@ -231,7 +234,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
 
         final int shouldOverrideUrlLoadingCallCount = mShouldOverrideUrlLoadingHelper.getCallCount();
 
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         // After we load this URL we're certain that any in-flight callbacks for the previous
         // navigation have been delivered.
@@ -250,7 +253,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
 
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
     }
@@ -267,7 +270,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
 
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
         assertEquals(httpPathOnServer,
@@ -284,7 +287,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
 
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
     }
@@ -298,7 +301,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
                 getHtmlForPageWithJsReplaceLinkTo(redirectTargetUrl), "text/html", false);
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
-        clickOnElementId("link");
+        clickOnElementId("link", null);
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
     }
 
@@ -310,7 +313,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
                 CommonResources.makeHtmlPageWithSimpleLinkTo(redirectTargetUrl), "text/html", false);
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
-        clickOnElementId("link");
+        clickOnElementId("link", null);
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
         assertEquals(redirectTargetUrl,
                 mShouldOverrideUrlLoadingHelper.getShouldOverrideUrlLoadingUrl());
@@ -334,11 +337,13 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
         setShouldOverrideUrlLoadingReturnValueOnUiThread(true);
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
-        clickOnElementId("link");
+        clickOnElementId("link", null);
         // Some time around here true should be returned from the shouldOverrideUrlLoading
         // callback causing the navigation caused by calling clickOnElementId to be ignored.
         // We validate this by checking which pages were loaded on the server.
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
+        mOnPageFinishedHelper.waitForCallback(
+                mOnPageFinishedHelper.getCallCount(), 1, 15, TimeUnit.SECONDS);
 
         setShouldOverrideUrlLoadingReturnValueOnUiThread(false);
 
@@ -360,7 +365,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
                 CommonResources.makeHtmlPageWithSimpleLinkTo(dataUrl), "text/html", false);
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
         assertTrue("Expected URL that starts with 'data:' but got: <" +
@@ -378,7 +383,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
                         false);
 
         int callCount = mShouldOverrideUrlLoadingHelper.getCallCount();
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(callCount);
         assertEquals(unsupportedSchemeUrl,
@@ -399,7 +404,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
             mShouldOverrideUrlLoadingHelper.getCallCount();
 
         assertEquals(0, mWebServer.getRequestCount(REDIRECT_TARGET_PATH));
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         // Wait for the target URL to be fetched from the server.
         pollOnUiThread(new Callable<Boolean>() {
@@ -429,7 +434,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
 
         final int shouldOverrideUrlLoadingCallCount = mShouldOverrideUrlLoadingHelper.getCallCount();
 
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(shouldOverrideUrlLoadingCallCount);
 
@@ -490,7 +495,7 @@ public class ShouldOverrideUrlLoadingTest extends XWalkViewTestBase {
         int indirectLoadCallCount = mShouldOverrideUrlLoadingHelper.getCallCount();
         loadUrlSync(pageWithLinkToRedirectUrl);
 
-        clickOnElementId("link");
+        clickOnElementId("link", null);
 
         mShouldOverrideUrlLoadingHelper.waitForCallback(indirectLoadCallCount, 3);
         assertEquals(redirectTarget,

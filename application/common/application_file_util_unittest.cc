@@ -4,7 +4,7 @@
 
 #include "xwalk/application/common/application_file_util.h"
 
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/json/json_string_value_serializer.h"
 #include "base/path_service.h"
@@ -41,8 +41,9 @@ TEST_F(ApplicationFileUtilTest, LoadApplicationWithValidPath) {
 
   std::string error;
   scoped_refptr<ApplicationData> application(LoadApplication(
-          install_dir, ApplicationData::LOCAL_DIRECTORY, &error));
-  ASSERT_TRUE(application != NULL);
+          install_dir, std::string(), ApplicationData::LOCAL_DIRECTORY,
+          Manifest::TYPE_MANIFEST, &error));
+  ASSERT_TRUE(application.get() != NULL);
   EXPECT_EQ("The first application that I made.", application->Description());
 }
 
@@ -60,8 +61,9 @@ TEST_F(ApplicationFileUtilTest,
 
   std::string error;
   scoped_refptr<ApplicationData> application(LoadApplication(
-          install_dir, ApplicationData::LOCAL_DIRECTORY, &error));
-  ASSERT_TRUE(application == NULL);
+          install_dir, std::string(), ApplicationData::LOCAL_DIRECTORY,
+          Manifest::TYPE_WIDGET, &error));
+  ASSERT_TRUE(application.get() == NULL);
   ASSERT_FALSE(error.empty());
   ASSERT_STREQ("Manifest file is missing or unreadable.", error.c_str());
 }
@@ -80,8 +82,9 @@ TEST_F(ApplicationFileUtilTest,
 
   std::string error;
   scoped_refptr<ApplicationData> application(LoadApplication(
-          install_dir, ApplicationData::LOCAL_DIRECTORY, &error));
-  ASSERT_TRUE(application == NULL);
+          install_dir, std::string(), ApplicationData::LOCAL_DIRECTORY,
+          Manifest::TYPE_MANIFEST, &error));
+  ASSERT_TRUE(application.get() == NULL);
   ASSERT_FALSE(error.empty());
   ASSERT_STREQ("Manifest is not valid JSON."
                "  Line: 2, column: 16, Syntax error.",
@@ -89,13 +92,15 @@ TEST_F(ApplicationFileUtilTest,
 }
 
 static scoped_refptr<ApplicationData> LoadApplicationManifest(
-    base::DictionaryValue* manifest,
+    base::DictionaryValue* values,
     const base::FilePath& manifest_dir,
     ApplicationData::SourceType location,
     int extra_flags,
     std::string* error) {
+  scoped_ptr<Manifest> manifest = make_scoped_ptr(
+      new Manifest(make_scoped_ptr(values->DeepCopy())));
   scoped_refptr<ApplicationData> application = ApplicationData::Create(
-      manifest_dir, location, *manifest, std::string(), error);
+      manifest_dir, std::string(), location, manifest.Pass(), error);
   return application;
 }
 

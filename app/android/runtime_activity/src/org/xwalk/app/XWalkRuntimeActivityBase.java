@@ -6,105 +6,89 @@ package org.xwalk.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
-import android.widget.Toast;
 
-import org.xwalk.app.runtime.CrossPackageWrapper;
-import org.xwalk.app.runtime.CrossPackageWrapperExceptionHandler;
-import org.xwalk.app.runtime.XWalkRuntimeClient;
-import org.xwalk.app.runtime.XWalkRuntimeLibraryException;
+import org.xwalk.app.runtime.extension.XWalkRuntimeExtensionManager;
+import org.xwalk.app.runtime.XWalkRuntimeView;
+import org.xwalk.core.SharedXWalkExceptionHandler;
+import org.xwalk.core.SharedXWalkView;
+import org.xwalk.core.XWalkActivity;
+import org.xwalk.core.XWalkPreferences;
 
-public abstract class XWalkRuntimeActivityBase extends Activity implements CrossPackageWrapperExceptionHandler {
+public abstract class XWalkRuntimeActivityBase extends XWalkActivity {
 
     private static final String DEFAULT_LIBRARY_APK_URL = null;
 
-    private XWalkRuntimeClient mRuntimeView;
+    private static final String TAG = "XWalkRuntimeActivityBase";
+
+    private XWalkRuntimeView mRuntimeView;
 
     private boolean mShownNotFoundDialog = false;
 
-    private BroadcastReceiver mReceiver;
-
     private boolean mRemoteDebugging = false;
+
+    private boolean mUseAnimatableView = false;
 
     private AlertDialog mLibraryNotFoundDialog = null;
 
+    private XWalkRuntimeExtensionManager mExtensionManager;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        IntentFilter intentFilter = new IntentFilter("org.xwalk.intent");
-        intentFilter.addAction("android.intent.action.EXTERNAL_APPLICATIONS_AVAILABLE");
-        intentFilter.addAction("android.intent.action.EXTERNAL_APPLICATIONS_UNAVAILABLE");
-        mReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                Bundle bundle = intent.getExtras();
-                if (bundle == null)
-                    return;
-
-                if (bundle.containsKey("remotedebugging")) {
-                    String extra = bundle.getString("remotedebugging");
-                    if (extra.equals("true")) {
-                        String mPackageName = getApplicationContext().getPackageName();
-                        mRuntimeView.enableRemoteDebugging("", mPackageName);
-                    } else if (extra.equals("false")) {
-                        mRuntimeView.disableRemoteDebugging();
-                    }
-                }
-            }
-        };
-        registerReceiver(mReceiver, intentFilter);
         super.onCreate(savedInstanceState);
         tryLoadRuntimeView();
-        mRuntimeView.onCreate();
+        if (mRuntimeView != null) mRuntimeView.onCreate();
     }
 
     @Override
     public void onStart() {
         super.onStart();
-        tryLoadRuntimeView();
-        mRuntimeView.onStart();
+        if (mExtensionManager != null) mExtensionManager.onStart();
     }
 
     @Override
     public void onPause() {
         super.onPause();
-        mRuntimeView.onPause();
+        if (mRuntimeView != null) mRuntimeView.onPause();
+        if (mExtensionManager != null) mExtensionManager.onPause();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        mRuntimeView.onResume();
+        if (mRuntimeView != null) mRuntimeView.onResume();
+        if (mExtensionManager != null) mExtensionManager.onResume();
     }
 
     @Override
     public void onStop() {
         super.onStop();
-        mRuntimeView.onStop();
+        if (mExtensionManager != null) mExtensionManager.onStop();
     }
 
     @Override
     public void onDestroy() {
-        unregisterReceiver(mReceiver);
+        if (mExtensionManager != null) mExtensionManager.onDestroy();
         super.onDestroy();
-        mRuntimeView.onDestroy();
     }
 
     @Override
     public void onNewIntent(Intent intent) {
-    	if (!mRuntimeView.onNewIntent(intent)) super.onNewIntent(intent);
+        if (mRuntimeView == null || !mRuntimeView.onNewIntent(intent)) super.onNewIntent(intent);
+        if (mExtensionManager != null) mExtensionManager.onNewIntent(intent);
     }
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        mRuntimeView.onActivityResult(requestCode, resultCode, data);
+        if (mRuntimeView != null) mRuntimeView.onActivityResult(requestCode, resultCode, data);
+        if (mExtensionManager != null) mExtensionManager.onActivityResult(requestCode, resultCode, data);
     }
 
     private String getLibraryApkDownloadUrl() {
@@ -120,69 +104,59 @@ public abstract class XWalkRuntimeActivityBase extends Activity implements Cross
     }
 
     private void tryLoadRuntimeView() {
-        if (mRuntimeView == null || mRuntimeView.get() == null) {
-            mRuntimeView = new XWalkRuntimeClient(this, null, this);
-            if (mRuntimeView.get() != null) {
-                mShownNotFoundDialog = false;
-                if (mLibraryNotFoundDialog != null) mLibraryNotFoundDialog.cancel();
-            }
-            if (mRemoteDebugging) {
-                String mPackageName = getApplicationContext().getPackageName();
-                mRuntimeView.enableRemoteDebugging("", mPackageName);
+        try {
+            SharedXWalkView.initialize(this, new SharedXWalkExceptionHandler() {
+                @Override
+                public void onSharedLibraryNotFound() {
+                    String title = getString("dialog_title_install_runtime_lib");
+                    String message = getString("dialog_message_install_runtime_lib");
+                    showRuntimeLibraryExceptionDialog(title, message);
+                }
+            });
+            if (mUseAnimatableView) {
+                XWalkPreferences.setValue(XWalkPreferences.ANIMATABLE_XWALK_VIEW, true);
             } else {
-                mRuntimeView.disableRemoteDebugging();
+                XWalkPreferences.setValue(XWalkPreferences.ANIMATABLE_XWALK_VIEW, false);
             }
-
-            didTryLoadRuntimeView(mRuntimeView.get());
+            mShownNotFoundDialog = false;
+            if (mLibraryNotFoundDialog != null) mLibraryNotFoundDialog.cancel();
+            mRuntimeView = new XWalkRuntimeView(this, this, null);
+            if (mRemoteDebugging) {
+                XWalkPreferences.setValue(XWalkPreferences.REMOTE_DEBUGGING, true);
+            } else {
+                XWalkPreferences.setValue(XWalkPreferences.REMOTE_DEBUGGING, false);
+            }
+            // XWalkPreferences.ENABLE_EXTENSIONS
+            if (XWalkPreferences.getValue("enable-extensions")) {
+                // Enable xwalk extension mechanism and start load extensions here.
+                // Note that it has to be after above initialization.
+                mExtensionManager = new XWalkRuntimeExtensionManager(getApplicationContext(), this);
+                mExtensionManager.loadExtensions();
+            }
+        } catch (Exception e) {
+            handleException(e);
         }
+        didTryLoadRuntimeView(mRuntimeView);
     }
 
-    public XWalkRuntimeClient getRuntimeView() {
+    public XWalkRuntimeView getRuntimeView() {
         return mRuntimeView;
     }
 
-    @Override
-    public void onException(Exception e) {
-        if (e.getClass() == XWalkRuntimeLibraryException.class) {
-            String title = "";
-            String message = "";
-            XWalkRuntimeLibraryException runtimeException = (XWalkRuntimeLibraryException) e;
-            switch (runtimeException.getType()) {
-            case XWalkRuntimeLibraryException.XWALK_RUNTIME_LIBRARY_NOT_UP_TO_DATE_CRITICAL:
-                title = getString("dialog_title_update_runtime_lib");
-                message = getString("dialog_message_update_runtime_lib");
-                break;
-            case XWalkRuntimeLibraryException.XWALK_RUNTIME_LIBRARY_NOT_UP_TO_DATE_WARNING:
-                title = getString("dialog_title_update_runtime_lib_warning");
-                message = getString("dialog_message_update_runtime_lib_warning");
-                break;
-            case XWalkRuntimeLibraryException.XWALK_RUNTIME_LIBRARY_NOT_INSTALLED:
-                title = getString("dialog_title_install_runtime_lib");
-                message = getString("dialog_message_install_runtime_lib");
-                break;
-            case XWalkRuntimeLibraryException.XWALK_RUNTIME_LIBRARY_INVOKE_FAILED:
-            default:
-                Exception originException = runtimeException.getOriginException();
-                if (originException != null) onException(originException);
-                return;
-            }
-            showRuntimeLibraryExceptionDialog(title, message);
-        } else {
-            e.printStackTrace();
-            onException(e.getLocalizedMessage());
-            throw new RuntimeException(e);
+    public void handleException(Throwable e) {
+        if (e == null) return;
+        if (e instanceof RuntimeException && e.getCause() != null) {
+            handleException(e.getCause());
+            return;
         }
-    }
-
-    @Override
-    public void onException(String message) {
-        Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
+        Log.e(TAG, Log.getStackTraceString(e));
     }
 
     private void showRuntimeLibraryExceptionDialog(String title, String message) {
         if (!mShownNotFoundDialog) {
+            if (SharedXWalkView.isUsingLibrary()) return;
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
-            if (XWalkRuntimeClient.libraryIsEmbedded()) {
+            if (SharedXWalkView.containsLibrary()) {
                 builder.setPositiveButton(android.R.string.ok,
                         new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int id) {
@@ -212,7 +186,7 @@ public abstract class XWalkRuntimeActivityBase extends Activity implements Cross
                             public void onClick(DialogInterface dialog, int id) {
                                 Intent goToMarket = new Intent(Intent.ACTION_VIEW);
                                 goToMarket.setData(Uri.parse(
-                                        "market://details?id="+CrossPackageWrapper.LIBRARY_APK_PACKAGE_NAME));
+                                        "market://details?id=org.xwalk.core"));
                                 startActivity(goToMarket);
                             }
                         });
@@ -248,6 +222,10 @@ public abstract class XWalkRuntimeActivityBase extends Activity implements Cross
 
     public void setRemoteDebugging(boolean value) {
         mRemoteDebugging = value;
+    }
+
+    public void setUseAnimatableView(boolean value) {
+        mUseAnimatableView = value;
     }
 
 }

@@ -7,8 +7,11 @@ package org.xwalk.core.xwview.test;
 
 import android.app.Activity;
 import android.content.Context;
+import android.net.Uri;
 import android.test.ActivityInstrumentationTestCase2;
 import android.util.Log;
+import android.view.KeyEvent;
+import android.webkit.ValueCallback;
 import android.webkit.WebResourceResponse;
 
 import java.io.InputStream;
@@ -20,11 +23,12 @@ import java.util.concurrent.TimeUnit;
 
 import junit.framework.Assert;
 
-import org.chromium.content.browser.LoadUrlParams;
+import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content.browser.test.util.CallbackHelper;
 import org.chromium.content.browser.test.util.Criteria;
 import org.chromium.content.browser.test.util.CriteriaHelper;
 
+import org.xwalk.core.XWalkJavascriptResult;
 import org.xwalk.core.XWalkNavigationHistory;
 import org.xwalk.core.XWalkNavigationItem;
 import org.xwalk.core.XWalkResourceClient;
@@ -54,7 +58,7 @@ public class XWalkViewTestBase
 
         @Override
         public void onPageLoadStopped(XWalkView view, String url, LoadStatus status) {
-            mInnerContentsClient.onPageFinished(url);
+            mInnerContentsClient.onPageFinished(url, status);
         }
 
         @Override
@@ -70,6 +74,34 @@ public class XWalkViewTestBase
         @Override
         public void onScaleChanged(XWalkView view, float oldScale, float newScale) {
             mInnerContentsClient.onScaleChanged(newScale);
+        }
+
+        @Override
+        public void onRequestFocus(XWalkView view) {
+            mInnerContentsClient.onRequestFocus();
+        }
+
+        @Override
+        public boolean onJavascriptModalDialog(XWalkView view,
+                XWalkUIClient.JavascriptMessageType type, String url, String message,
+                        String defaultValue, XWalkJavascriptResult result) {
+            return mInnerContentsClient.onJavascriptModalDialog(message);
+        }
+
+        @Override
+        public void openFileChooser(XWalkView view, ValueCallback<Uri> uploadFile,
+                String acceptType, String capture) {
+            mInnerContentsClient.openFileChooser(uploadFile);
+        }
+
+        @Override
+        public void onFullscreenToggled(XWalkView view, boolean enterFullscreen) {
+            mInnerContentsClient.onFullscreenToggled(enterFullscreen);
+        }
+
+        @Override
+        public boolean shouldOverrideKeyEvent(XWalkView view, KeyEvent event) {
+            return mInnerContentsClient.overrideOrUnhandledKeyEvent(event);
         }
     }
 
@@ -310,7 +342,7 @@ public class XWalkViewTestBase
         int currentCallCount = getTitleHelper.getCallCount();
         String fileContent = getFileContent(fileName);
 
-        loadDataSync(fileName, fileContent, "text/html", false);
+        loadDataAsync(fileName, fileContent, "text/html", false);
 
         getTitleHelper.waitForCallback(currentCallCount, 1, WAIT_TIMEOUT_SECONDS,
                 TimeUnit.SECONDS);
@@ -486,13 +518,20 @@ public class XWalkViewTestBase
         });
     }
 
-    public void clickOnElementId(final String id) throws Exception {
+    public void clickOnElementId(final String id, String frameName) throws Exception {
+        String str;
+        if (frameName != null) {
+            str = "top.window." + frameName + ".document.getElementById('" + id + "')";
+        } else {
+            str = "document.getElementById('" + id + "')";
+        }
+        final String script1 = str + " != null";
+        final String script2 = str + ".dispatchEvent(evObj);";
         Assert.assertTrue(CriteriaHelper.pollForCriteria(new Criteria() {
             @Override
             public boolean isSatisfied() {
                 try {
-                    String idIsNotNull = executeJavaScriptAndWaitForResult(
-                        "document.getElementById('" + id + "') != null");
+                    String idIsNotNull = executeJavaScriptAndWaitForResult(script1);
                     return idIsNotNull.equals("true");
                 } catch (Throwable t) {
                     t.printStackTrace();
@@ -503,13 +542,34 @@ public class XWalkViewTestBase
         }, WAIT_TIMEOUT_MS, CHECK_INTERVAL));
 
         try {
-            String result = executeJavaScriptAndWaitForResult(
-                "var evObj = document.createEvent('Events'); " +
+            loadJavaScriptUrl("javascript:var evObj = document.createEvent('Events'); " +
                 "evObj.initEvent('click', true, false); " +
-                "document.getElementById('" + id + "').dispatchEvent(evObj);" +
+                script2 +
                 "console.log('element with id [" + id + "] clicked');");
         } catch (Throwable t) {
             t.printStackTrace();
         }
+    }
+
+    public void simulateKeyAction(final int action) {
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    getInstrumentation().sendKeySync(new KeyEvent(action,
+                            KeyEvent.KEYCODE_DPAD_CENTER));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
+
+    protected void stopLoading() throws Exception {
+        getInstrumentation().runOnMainSync(new Runnable() {
+            @Override
+            public void run() {
+                mXWalkView.stopLoading();
+            }
+        });
     }
 }

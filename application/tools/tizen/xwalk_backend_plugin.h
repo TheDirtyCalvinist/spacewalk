@@ -6,8 +6,8 @@
 #define XWALK_APPLICATION_TOOLS_TIZEN_XWALK_BACKEND_PLUGIN_H_
 
 #include <package-manager.h>
-#include <package-manager-types.h>
 #include <package-manager-plugin.h>
+#include <package-manager-types.h>
 
 #include <string>
 
@@ -15,7 +15,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/singleton.h"
-#include "xwalk/application/common/application_storage.h"
+#include "xwalk/application/common/tizen/application_storage.h"
 
 template <typename Type>
 struct PkgmgrBackendPluginTraits : DefaultSingletonTraits<Type> {
@@ -33,19 +33,27 @@ class PkgmgrBackendPlugin {
   int IsAppInstalled(const std::string& pkgid);
   int AppsList(package_manager_pkg_info_t** list, int* count);
 
+  void SetLoadSet(pkg_plugin_set* set);
+
+  std::string type() const;
+
  private:
   PkgmgrBackendPlugin();
 
-  void SaveInfo(xwalk::application::ApplicationData* app_data,
-                package_manager_pkg_info_t* pkg_detail_info);
-  void SaveDetailInfo(xwalk::application::ApplicationData* app_data,
-                      package_manager_pkg_detail_info_t* pkg_detail_info);
+  void SaveInfo(scoped_refptr<xwalk::application::ApplicationData> app_data,
+                package_manager_pkg_info_t* pkg_detail_info,
+                const std::string& force_type = std::string());
+  void SaveDetailInfo(
+      scoped_refptr<xwalk::application::ApplicationData> app_data,
+      package_manager_pkg_detail_info_t* pkg_detail_info,
+      const std::string& force_type = std::string());
   scoped_refptr<xwalk::application::ApplicationData> GetApplicationDataFromPkg(
-      const std::string& pkg_path);
+      const std::string& pkg_path, base::ScopedTempDir* dir);
 
   friend struct DefaultSingletonTraits<PkgmgrBackendPlugin>;
 
   scoped_ptr<xwalk::application::ApplicationStorage> storage_;
+  pkg_plugin_set* set_;
 
   DISALLOW_COPY_AND_ASSIGN(PkgmgrBackendPlugin);
 };

@@ -20,11 +20,42 @@ class TizenSettingInfo : public ApplicationData::ManifestData {
   TizenSettingInfo();
   virtual ~TizenSettingInfo();
 
+  enum ScreenOrientation {
+    PORTRAIT,
+    LANDSCAPE,
+    AUTO
+  };
+
   void set_hwkey_enabled(bool enabled) { hwkey_enabled_ = enabled; }
   bool hwkey_enabled() const { return hwkey_enabled_; }
 
+  void set_screen_orientation(ScreenOrientation orientation) {
+    screen_orientation_ = orientation;
+  }
+
+  ScreenOrientation screen_orientation() const { return screen_orientation_; }
+
+  void set_encryption_enabled(bool enabled) { encryption_enabled_ = enabled; }
+  bool encryption_enabled() const { return encryption_enabled_; }
+
+  void set_context_menu_enabled(bool enabled) {
+    context_menu_enabled_ = enabled;
+  }
+  bool context_menu_enabled() const { return context_menu_enabled_; }
+
+  void set_background_support_enabled(bool enabled) {
+    background_support_enabled_ = enabled;
+  }
+  bool background_support_enabled() const {
+    return background_support_enabled_;
+  }
+
  private:
   bool hwkey_enabled_;
+  ScreenOrientation screen_orientation_;
+  bool encryption_enabled_;
+  bool context_menu_enabled_;
+  bool background_support_enabled_;
 };
 
 class TizenSettingHandler : public ManifestHandler {
@@ -32,11 +63,11 @@ class TizenSettingHandler : public ManifestHandler {
   TizenSettingHandler();
   virtual ~TizenSettingHandler();
 
-  virtual bool Parse(scoped_refptr<ApplicationData> application,
-                     base::string16* error) OVERRIDE;
-  virtual bool Validate(scoped_refptr<const ApplicationData> application,
-                        std::string* error) const OVERRIDE;
-  virtual std::vector<std::string> Keys() const OVERRIDE;
+  bool Parse(scoped_refptr<ApplicationData> application,
+                     base::string16* error) override;
+  bool Validate(scoped_refptr<const ApplicationData> application,
+                        std::string* error) const override;
+  std::vector<std::string> Keys() const override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TizenSettingHandler);

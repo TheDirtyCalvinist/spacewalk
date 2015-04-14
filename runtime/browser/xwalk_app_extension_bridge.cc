@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/notification_service.h"
 #include "xwalk/application/browser/application.h"
 #include "xwalk/application/browser/application_service.h"
 #include "xwalk/application/browser/application_system.h"
@@ -18,8 +20,12 @@
 
 namespace xwalk {
 
+using application::Application;
+using application::ApplicationService;
+using application::ApplicationSystem;
+
 XWalkAppExtensionBridge::XWalkAppExtensionBridge()
-    : app_system_(NULL) {
+    : app_system_(nullptr) {
 }
 
 XWalkAppExtensionBridge::~XWalkAppExtensionBridge() {}
@@ -64,10 +70,7 @@ void XWalkAppExtensionBridge::ExtensionProcessCreated(
     int render_process_id,
     const IPC::ChannelHandle& channel_handle) {
 #if defined(OS_LINUX)
-  CHECK(app_system_);
-  application::ApplicationService* service = app_system_->application_service();
-  application::Application* app =
-      service->GetApplicationByRenderHostID(render_process_id);
+  Application* app = GetApplication(render_process_id);
   CHECK(app);
 
   application::ApplicationSystemLinux* app_system =
@@ -77,6 +80,22 @@ void XWalkAppExtensionBridge::ExtensionProcessCreated(
   CHECK(running_app_object);
   running_app_object->ExtensionProcessCreated(channel_handle);
 #endif
+}
+
+void XWalkAppExtensionBridge::RenderChannelCreated(
+    int render_process_id) {
+  Application* app = GetApplication(render_process_id);
+  if (!app)
+    return;
+  content::BrowserThread::PostTask(content::BrowserThread::UI, FROM_HERE,
+      base::Bind(&Application::RenderChannelCreated, app->GetWeakPtr()));
+}
+
+Application* XWalkAppExtensionBridge::GetApplication(int render_process_id) {
+  CHECK(app_system_);
+  ApplicationService* service =
+      app_system_->application_service();
+  return service->GetApplicationByRenderHostID(render_process_id);
 }
 
 }  // namespace xwalk

@@ -8,10 +8,12 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.util.Log;
+import android.os.Message;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -39,6 +41,17 @@ public class XWalkUIClientInternal {
     private XWalkViewInternal mXWalkView;
     private boolean mOriginalFullscreen;
     private boolean mOriginalForceNotFullscreen;
+    private boolean mIsFullscreen = false;
+
+    /**
+     * Initiator
+     * @since 4.0
+     */
+    @XWalkAPI
+    public enum InitiateByInternal {
+        BY_USER_GESTURE,
+        BY_JAVASCRIPT
+    }
 
     private static final String TAG = XWalkUIClientInternal.class.getSimpleName();
 
@@ -67,6 +80,42 @@ public class XWalkUIClientInternal {
         mJSPromptTitle = mContext.getString(R.string.js_prompt_title);
         mOKButton = mContext.getString(android.R.string.ok);
         mCancelButton = mContext.getString(android.R.string.cancel);
+    }
+
+    /**
+     * Request the host application to create a new window
+     * @param view The XWalkView which initiate the request for a new window
+     * @param initiator How the request was initiated
+     * @param callback Callback when once a new XWalkView has been created
+     * @return Return true if the host application will create a new window
+     * @since 4.0
+     */
+    @XWalkAPI
+    public boolean onCreateWindowRequested(XWalkViewInternal view, InitiateByInternal initiator,
+            ValueCallback<XWalkViewInternal> callback) {
+        return false;
+    }
+
+    /**
+     * Notify the host application that an icon is available, send the message to start the downloading
+     * @param view The XWalkView that icon belongs to
+     * @param url The icon url
+     * @param startDownload Message to initiate icon download
+     * @since 4.0
+     */
+    @XWalkAPI
+    public void onIconAvailable(XWalkViewInternal view, String url, Message startDownload) {
+    }
+
+    /**
+     * Notify the host application of a new icon has been downloaded
+     * @param view The XWalkView that icon belongs to
+     * @param url The icon url
+     * @param icon The icon image
+     * @since 4.0
+     */
+    @XWalkAPI
+    public void onReceivedIcon(XWalkViewInternal view, String url, Bitmap icon) {
     }
 
     /**
@@ -154,23 +203,26 @@ public class XWalkUIClientInternal {
             } else {
                 mOriginalForceNotFullscreen = false;
             }
-            if (VERSION.SDK_INT >= VERSION_CODES.KITKAT) {
-                mSystemUiFlag = mDecorView.getSystemUiVisibility();
-                mDecorView.setSystemUiVisibility(
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-                        View.SYSTEM_UI_FLAG_FULLSCREEN |
-                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-            } else {
-                if ((activity.getWindow().getAttributes().flags &
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0) {
-                    mOriginalFullscreen = true;
+            if (!mIsFullscreen) {
+                if (VERSION.SDK_INT >= VERSION_CODES.KITKAT) {
+                    mSystemUiFlag = mDecorView.getSystemUiVisibility();
+                    mDecorView.setSystemUiVisibility(
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                            View.SYSTEM_UI_FLAG_FULLSCREEN |
+                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
                 } else {
-                    mOriginalFullscreen = false;
-                    activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                    if ((activity.getWindow().getAttributes().flags &
+                            WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0) {
+                        mOriginalFullscreen = true;
+                    } else {
+                        mOriginalFullscreen = false;
+                        activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                    }
                 }
+                mIsFullscreen = true;
             }
         } else {
             if (mOriginalForceNotFullscreen) {
@@ -185,6 +237,7 @@ public class XWalkUIClientInternal {
                     activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
                 }
             }
+            mIsFullscreen = false;
         }
     }
 

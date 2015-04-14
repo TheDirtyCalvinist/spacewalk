@@ -40,6 +40,7 @@
 #include "net/url_request/url_request_job_factory_impl.h"
 #include "xwalk/application/common/constants.h"
 #include "xwalk/runtime/browser/runtime_network_delegate.h"
+#include "xwalk/runtime/common/xwalk_content_client.h"
 
 #if defined(OS_ANDROID)
 #include "xwalk/runtime/browser/android/cookie_manager.h"
@@ -75,7 +76,7 @@ RuntimeURLRequestContextGetter::RuntimeURLRequestContextGetter(
   // the URLRequestContextStorage on the IO thread in GetURLRequestContext().
   proxy_config_service_.reset(
       net::ProxyService::CreateSystemProxyConfigService(
-          io_loop_->message_loop_proxy(), file_loop_));
+          io_loop_->message_loop_proxy(), file_loop_->message_loop_proxy()));
 }
 
 RuntimeURLRequestContextGetter::~RuntimeURLRequestContextGetter() {
@@ -113,8 +114,8 @@ net::URLRequestContext* RuntimeURLRequestContextGetter::GetURLRequestContext() {
     storage_->set_channel_id_service(new net::ChannelIDService(
         new net::DefaultChannelIDStore(NULL),
         base::WorkerPool::GetTaskRunner(true)));
-    storage_->set_http_user_agent_settings(
-        new net::StaticHttpUserAgentSettings("en-us,en", base::EmptyString()));
+    storage_->set_http_user_agent_settings(new net::StaticHttpUserAgentSettings(
+        "en-us,en", xwalk::GetUserAgent()));
 
     scoped_ptr<net::HostResolver> host_resolver(
         net::HostResolver::CreateDefaultResolver(NULL));
@@ -234,7 +235,7 @@ net::URLRequestContext* RuntimeURLRequestContextGetter::GetURLRequestContext() {
     // The chain of responsibility will execute the handlers in reverse to the
     // order in which the elements of the chain are created.
     scoped_ptr<net::URLRequestJobFactory> job_factory(
-        job_factory_impl.PassAs<net::URLRequestJobFactory>());
+        job_factory_impl.Pass());
     for (URLRequestInterceptorVector::reverse_iterator
              i = request_interceptors.rbegin();
          i != request_interceptors.rend();
@@ -245,7 +246,7 @@ net::URLRequestContext* RuntimeURLRequestContextGetter::GetURLRequestContext() {
 
     // Set up interceptors in the reverse order.
     scoped_ptr<net::URLRequestJobFactory> top_job_factory =
-        job_factory.PassAs<net::URLRequestJobFactory>();
+        job_factory.Pass();
     for (content::URLRequestInterceptorScopedVector::reverse_iterator i =
              request_interceptors_.rbegin();
          i != request_interceptors_.rend();

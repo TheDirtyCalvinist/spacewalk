@@ -12,13 +12,13 @@
 namespace xwalk {
 namespace application {
 
-ApplicationSystemLinux::ApplicationSystemLinux(RuntimeContext* runtime_context)
-    : ApplicationSystem(runtime_context) {
-#if defined(SHARED_PROCESS_MODE)
+ApplicationSystemLinux::ApplicationSystemLinux(XWalkBrowserContext* context)
+    : ApplicationSystem(context) {
+  if (XWalkRunner::GetInstance()->shared_process_mode_enabled()) {
     service_provider_.reset(
         new ApplicationServiceProviderLinux(application_service(),
                                             dbus_manager().session_bus()));
-#endif
+  }
 }
 
 ApplicationSystemLinux::~ApplicationSystemLinux() {}

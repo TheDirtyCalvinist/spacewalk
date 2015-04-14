@@ -31,14 +31,14 @@ class ScopedTestingManifestHandlerRegistry {
       : registry_(
           new ManifestHandlerRegistry(handlers)),
         prev_registry_(
-          ManifestHandlerRegistry::GetInstance(Package::XPK)) {
+          ManifestHandlerRegistry::GetInstance(Manifest::TYPE_MANIFEST)) {
     ManifestHandlerRegistry::SetInstanceForTesting(
-        registry_.get(), Package::XPK);
+        registry_.get(), Manifest::TYPE_MANIFEST);
   }
 
   ~ScopedTestingManifestHandlerRegistry() {
     ManifestHandlerRegistry::SetInstanceForTesting(
-        prev_registry_, Package::XPK);
+        prev_registry_, Manifest::TYPE_MANIFEST);
   }
 
   scoped_ptr<ManifestHandlerRegistry> registry_;
@@ -92,18 +92,18 @@ class ManifestHandlerTest : public testing::Test {
 
     virtual ~TestManifestHandler() {}
 
-    virtual bool Parse(
+    bool Parse(
         scoped_refptr<ApplicationData> application,
-        base::string16* error) OVERRIDE {
+        base::string16* error) override {
       watcher_->Record(name_);
       return true;
     }
 
-    virtual std::vector<std::string> PrerequisiteKeys() const OVERRIDE {
+    std::vector<std::string> PrerequisiteKeys() const override {
       return prereqs_;
     }
 
-    virtual std::vector<std::string> Keys() const OVERRIDE {
+    std::vector<std::string> Keys() const override {
       return keys_;
     }
 
@@ -122,9 +122,9 @@ class ManifestHandlerTest : public testing::Test {
                                ParsingWatcher* watcher)
         : TestManifestHandler(name, keys, prereqs, watcher) {
     }
-    virtual bool Parse(
+    bool Parse(
         scoped_refptr<ApplicationData> application,
-        base::string16* error) OVERRIDE {
+        base::string16* error) override {
       *error = base::ASCIIToUTF16(name_);
       return false;
     }
@@ -139,7 +139,7 @@ class ManifestHandlerTest : public testing::Test {
         : TestManifestHandler(name, keys, prereqs, watcher) {
     }
 
-    virtual bool AlwaysParseForType(Manifest::Type type) const OVERRIDE {
+    bool AlwaysParseForType(Manifest::Type type) const override {
       return true;
     }
   };
@@ -154,23 +154,23 @@ class ManifestHandlerTest : public testing::Test {
           keys_(keys) {
     }
 
-    virtual bool Parse(
+    bool Parse(
         scoped_refptr<ApplicationData> application,
-        base::string16* error) OVERRIDE {
+        base::string16* error) override {
       return true;
     }
 
-    virtual bool Validate(
+    bool Validate(
         scoped_refptr<const ApplicationData> application,
-        std::string* error) const OVERRIDE {
+        std::string* error) const override {
       return return_value_;
     }
 
-    virtual bool AlwaysValidateForType(Manifest::Type type) const OVERRIDE {
+    bool AlwaysValidateForType(Manifest::Type type) const override {
       return always_validate_;
     }
 
-    virtual std::vector<std::string> Keys() const OVERRIDE {
+    std::vector<std::string> Keys() const override {
       return keys_;
     }
 
@@ -219,10 +219,9 @@ TEST_F(ManifestHandlerTest, DependentHandlers) {
   manifest.SetInteger("g", 6);
   std::string error;
   scoped_refptr<ApplicationData> application = ApplicationData::Create(
-      base::FilePath(),
+      base::FilePath(), std::string(),
       ApplicationData::LOCAL_DIRECTORY,
-      manifest,
-      "",
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest.DeepCopy()))),
       &error);
   EXPECT_TRUE(application.get());
   // A, B, C.EZ, C.D, K
@@ -247,10 +246,9 @@ TEST_F(ManifestHandlerTest, FailingHandlers) {
   // Succeeds when "a" is not recognized.
   std::string error;
   scoped_refptr<ApplicationData> application = ApplicationData::Create(
-      base::FilePath(),
+      base::FilePath(), std::string(),
       ApplicationData::LOCAL_DIRECTORY,
-      manifest_a,
-      "",
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest_a.DeepCopy()))),
       &error);
   EXPECT_TRUE(application.get());
 
@@ -264,10 +262,9 @@ TEST_F(ManifestHandlerTest, FailingHandlers) {
   registry.reset(new ScopedTestingManifestHandlerRegistry(handlers));
 
   application = ApplicationData::Create(
-      base::FilePath(),
+      base::FilePath(), std::string(),
       ApplicationData::LOCAL_DIRECTORY,
-      manifest_a,
-      "",
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest_a.DeepCopy()))),
       &error);
   EXPECT_FALSE(application.get());
   EXPECT_EQ("A", error);
@@ -285,10 +282,9 @@ TEST_F(ManifestHandlerTest, Validate) {
   manifest.SetInteger("b", 2);
   std::string error;
   scoped_refptr<ApplicationData> application = ApplicationData::Create(
-      base::FilePath(),
+      base::FilePath(), std::string(),
       ApplicationData::LOCAL_DIRECTORY,
-      manifest,
-      "",
+      make_scoped_ptr(new Manifest(make_scoped_ptr(manifest.DeepCopy()))),
       &error);
   EXPECT_TRUE(application.get());
 

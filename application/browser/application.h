@@ -1,4 +1,5 @@
 // Copyright (c) 2013 Intel Corporation. All rights reserved.
+// Copyright (c) 2014 Samsung Electronics Co., Ltd All Rights Reserved
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,10 +19,9 @@
 #include "base/observer_list.h"
 #include "content/public/browser/render_process_host_observer.h"
 #include "ui/base/ui_base_types.h"
+#include "xwalk/application/browser/application_security_policy.h"
 #include "xwalk/application/common/application_data.h"
-#include "xwalk/application/common/security_policy.h"
 #include "xwalk/runtime/browser/runtime.h"
-
 
 namespace content {
 class RenderProcessHost;
@@ -29,13 +29,14 @@ class RenderProcessHost;
 
 namespace xwalk {
 
-class RuntimeContext;
+class XWalkBrowserContext;
+class XWalkAppExtensionBridge;
 
 namespace application {
 
 class ApplicationHost;
 class Manifest;
-class SecurityPolicy;
+class ApplicationSecurityPolicy;
 
 // The Application class is representing an active (running) application.
 // Application instances are owned by ApplicationService.
@@ -58,24 +59,7 @@ class Application : public Runtime::Observer,
     virtual ~Observer() {}
   };
 
-  // Manifest keys that can be used as application entry points.
-  enum LaunchEntryPoint {
-    StartURLKey = 1 << 0,  // start_url
-    LaunchLocalPathKey = 1 << 1,  // app.launch.local_path
-    URLKey = 1 << 2,  // url
-    Default = StartURLKey | LaunchLocalPathKey
-  };
-  typedef unsigned LaunchEntryPoints;
-
   struct LaunchParams {
-    LaunchParams() :
-        entry_points(Default),
-        launcher_pid(0),
-        force_fullscreen(false),
-        remote_debugging(false) {}
-
-    LaunchEntryPoints entry_points;
-
     // Used only when running as service. Specifies the PID of the launcher
     // process.
     int32 launcher_pid;
@@ -93,7 +77,7 @@ class Application : public Runtime::Observer,
   // immediately after its termination.
   void Terminate();
 
-  const std::set<Runtime*>& runtimes() const { return runtimes_; }
+  const std::vector<Runtime*>& runtimes() const { return runtimes_.get(); }
 
   // Returns the unique application id which is used to distinguish the
   // application amoung both running applications and installed ones
@@ -103,8 +87,8 @@ class Application : public Runtime::Observer,
   content::RenderProcessHost* render_process_host() {
     return render_process_host_; }
 
-  const ApplicationData* data() const { return data_; }
-  ApplicationData* data() { return data_; }
+  const ApplicationData* data() const { return data_.get(); }
+  ApplicationData* data() { return data_.get(); }
 
   // Tells whether the application use the specified extension.
   bool UseExtension(const std::string& extension_name) const;
@@ -125,63 +109,74 @@ class Application : public Runtime::Observer,
                      const std::string& permission_name,
                      StoredPermission perm);
   bool CanRequestURL(const GURL& url) const;
+  bool IsFullScreenRequired() const {
+      return window_show_params_.state == ui::SHOW_STATE_FULLSCREEN; }
+
+  void set_observer(Observer* observer) { observer_ = observer; }
+
+  base::WeakPtr<Application> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
 
  protected:
-  // We enforce ApplicationService ownership.
-  friend class ApplicationService;
   Application(scoped_refptr<ApplicationData> data,
-              RuntimeContext* context,
-              Observer* observer);
+              XWalkBrowserContext* context);
   virtual bool Launch(const LaunchParams& launch_params);
   virtual void InitSecurityPolicy();
+
+  // Runtime::Observer implementation.
+  virtual void OnNewRuntimeAdded(Runtime* runtime) override;
+  virtual void OnRuntimeClosed(Runtime* runtime) override;
 
   // Get the path of splash screen image. Return empty path by default.
   // Sub class can override it to return a specific path.
   virtual base::FilePath GetSplashScreenPath();
 
-  std::set<Runtime*> runtimes_;
+  XWalkBrowserContext* browser_context_;
+  ScopedVector<Runtime> runtimes_;
   scoped_refptr<ApplicationData> const data_;
   // The application's render process host.
   content::RenderProcessHost* render_process_host_;
   content::WebContents* web_contents_;
   bool security_mode_enabled_;
 
-  base::WeakPtr<Application> GetWeakPtr() {
-    return weak_factory_.GetWeakPtr();
-  }
+  NativeAppWindow::CreateParams window_show_params_;
 
  private:
-  // Runtime::Observer implementation.
-  virtual void OnRuntimeAdded(Runtime* runtime) OVERRIDE;
-  virtual void OnRuntimeRemoved(Runtime* runtime) OVERRIDE;
+  // We enforce ApplicationService ownership.
+  friend class ApplicationService;
+  // XWalkAppExtensionBridge gives notifications.
+  friend class xwalk::XWalkAppExtensionBridge;
+  static scoped_ptr<Application> Create(scoped_refptr<ApplicationData> data,
+      XWalkBrowserContext* context);
 
   // content::RenderProcessHostObserver implementation.
-  virtual void RenderProcessExited(content::RenderProcessHost* host,
-                                   base::ProcessHandle handle,
-                                   base::TerminationStatus status,
-                                   int exit_code) OVERRIDE;
-  virtual void RenderProcessHostDestroyed(
-      content::RenderProcessHost* host) OVERRIDE;
+  void RenderProcessExited(content::RenderProcessHost* host,
+                           base::TerminationStatus status,
+                           int exit_code) override;
+  void RenderProcessHostDestroyed(
+      content::RenderProcessHost* host) override;
 
   // Try to extract the URL from different possible keys for entry points in the
   // manifest, returns it and the entry point used.
-  GURL GetStartURL(const LaunchParams& params, LaunchEntryPoint* used);
-  ui::WindowShowState GetWindowShowStateWGT(const LaunchParams& params);
-  ui::WindowShowState GetWindowShowStateXPK(const LaunchParams& params);
+  template <Manifest::Type> GURL GetStartURL();
+
+  template <Manifest::Type>
+  ui::WindowShowState GetWindowShowState(const LaunchParams& params);
 
   GURL GetAbsoluteURLFromKey(const std::string& key);
 
   void NotifyTermination();
+  // Notification from XWalkAppExtensionBridge.
+  void RenderChannelCreated();
 
-  RuntimeContext* runtime_context_;
   Observer* observer_;
-  // The entry point used as part of Launch().
-  LaunchEntryPoint entry_point_used_;
+
   std::map<std::string, std::string> name_perm_map_;
   // Application's session permissions.
   StoredPermissionMap permission_map_;
   // Security policy.
-  scoped_ptr<SecurityPolicy> security_policy_;
+  scoped_ptr<ApplicationSecurityPolicy> security_policy_;
   // Remote debugging enabled or not for this Application
   bool remote_debugging_enabled_;
   // WeakPtrFactory should be always declared the last.

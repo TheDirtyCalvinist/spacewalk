@@ -10,8 +10,8 @@
 
 #include "base/bind.h"
 #include "base/command_line.h"
-#include "base/file_util.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/message_loop/message_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "cc/base/switches.h"
@@ -27,8 +27,6 @@
 #include "xwalk/application/browser/application_system.h"
 #include "xwalk/extensions/browser/xwalk_extension_service.h"
 #include "xwalk/extensions/common/xwalk_extension_switches.h"
-#include "xwalk/runtime/browser/runtime.h"
-#include "xwalk/runtime/browser/runtime_context.h"
 #include "xwalk/runtime/browser/xwalk_runner.h"
 #include "xwalk/runtime/common/xwalk_runtime_features.h"
 #include "xwalk/runtime/common/xwalk_switches.h"
@@ -40,8 +38,11 @@
 #endif
 
 #if defined(USE_AURA) && defined(USE_X11)
+#include "ui/events/devices/x11/touch_factory_x11.h"
+#endif
+
+#if !defined(OS_CHROMEOS) && defined(USE_AURA) && defined(OS_LINUX)
 #include "ui/base/ime/input_method_initializer.h"
-#include "ui/events/x/touch_factory_x11.h"
 #endif
 
 namespace {
@@ -76,6 +77,7 @@ namespace xwalk {
 XWalkBrowserMainParts::XWalkBrowserMainParts(
     const content::MainFunctionParams& parameters)
     : xwalk_runner_(XWalkRunner::GetInstance()),
+      extension_service_(NULL),
       startup_url_(url::kAboutBlankURL),
       parameters_(parameters),
       run_default_message_loop_(true) {
@@ -98,7 +100,6 @@ XWalkBrowserMainParts::~XWalkBrowserMainParts() {
 void XWalkBrowserMainParts::PreMainMessageLoopStart() {
   CommandLine* command_line = CommandLine::ForCurrentProcess();
   command_line->AppendSwitch(switches::kEnableViewport);
-  command_line->AppendSwitch(switches::kEnableViewportMeta);
 
   command_line->AppendSwitch(xswitches::kEnableOverlayScrollbars);
 
@@ -110,7 +111,6 @@ void XWalkBrowserMainParts::PreMainMessageLoopStart() {
   command_line->AppendSwitch(switches::kAllowFileAccessFromFiles);
 
   // Enable SIMD.JS API by default.
-  /*
   std::string js_flags("--simd_object");
   if (command_line->HasSwitch(switches::kJavaScriptFlags)) {
     js_flags += " ";
@@ -118,7 +118,6 @@ void XWalkBrowserMainParts::PreMainMessageLoopStart() {
         command_line->GetSwitchValueASCII(switches::kJavaScriptFlags);
   }
   command_line->AppendSwitchASCII(switches::kJavaScriptFlags, js_flags);
-  */
 
   startup_url_ = GetURLFromCommandLine(*command_line);
 }
@@ -127,8 +126,8 @@ void XWalkBrowserMainParts::PostMainMessageLoopStart() {
 }
 
 void XWalkBrowserMainParts::PreEarlyInitialization() {
-#if defined(USE_AURA) && defined(USE_X11)
-    ui::InitializeInputMethodForTesting();
+#if !defined(OS_CHROMEOS) && defined(USE_AURA) && defined(OS_LINUX)
+  ui::InitializeInputMethodForTesting();
 #endif
 }
 
@@ -217,20 +216,20 @@ void XWalkBrowserMainParts::PreMainMessageLoopRun() {
     return;
   }
 
-#if !defined(SHARED_PROCESS_MODE)
-  application::ApplicationSystem* app_system = xwalk_runner_->app_system();
-  app_system->LaunchFromCommandLine(*command_line, startup_url_,
-                                    run_default_message_loop_);
-  // If the |ui_task| is specified in main function parameter, it indicates
-  // that we will run this UI task instead of running the the default main
-  // message loop. See |content::BrowserTestBase::SetUp| for |ui_task| usage
-  // case.
-  if (parameters_.ui_task) {
-    parameters_.ui_task->Run();
-    delete parameters_.ui_task;
-    run_default_message_loop_ = false;
+  if (!xwalk_runner_->shared_process_mode_enabled()) {
+    application::ApplicationSystem* app_system = xwalk_runner_->app_system();
+    app_system->LaunchFromCommandLine(*command_line, startup_url_,
+                                      run_default_message_loop_);
+    // If the |ui_task| is specified in main function parameter, it indicates
+    // that we will run this UI task instead of running the the default main
+    // message loop. See |content::BrowserTestBase::SetUp| for |ui_task| usage
+    // case.
+    if (parameters_.ui_task) {
+      parameters_.ui_task->Run();
+      delete parameters_.ui_task;
+      run_default_message_loop_ = false;
+    }
   }
-#endif
 }
 
 bool XWalkBrowserMainParts::MainMessageLoopRun(int* result_code) {

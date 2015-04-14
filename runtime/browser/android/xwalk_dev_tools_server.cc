@@ -17,17 +17,18 @@
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "blink_upstream_version.h"  // NOLINT
 #include "content/public/browser/android/devtools_auth.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_http_handler.h"
 #include "content/public/browser/devtools_http_handler_delegate.h"
+#include "content/public/browser/devtools_manager_delegate.h"
 #include "content/public/browser/devtools_target.h"
 #include "content/public/browser/favicon_status.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_delegate.h"
-#include "content/public/common/user_agent.h"
 #include "grit/xwalk_resources.h"
 #include "jni/XWalkDevToolsServer_jni.h"
 #include "net/socket/unix_domain_listen_socket_posix.h"
@@ -44,7 +45,6 @@ namespace {
 // Currently, the chrome version is hardcoded because of this dependancy.
 const char kFrontEndURL[] =
     "http://chrome-devtools-frontend.appspot.com/serve_rev/%s/devtools.html";
-const char kTargetTypePage[] = "page";
 
 bool AuthorizeSocketAccessWithDebugPermission(
      const net::UnixDomainServerSocket::Credentials& credentials) {
@@ -55,108 +55,57 @@ bool AuthorizeSocketAccessWithDebugPermission(
       content::CanUserConnectToDevTools(credentials);
 }
 
-class Target : public content::DevToolsTarget {
- public:
-  explicit Target(WebContents* web_contents);
-
-  virtual std::string GetId() const OVERRIDE { return id_; }
-  virtual std::string GetType() const OVERRIDE { return kTargetTypePage; }
-  virtual std::string GetTitle() const OVERRIDE { return title_; }
-  // TODO(hmin): Get the description about web contents view.
-  virtual std::string GetDescription() const OVERRIDE { return std::string(); }
-  virtual GURL GetURL() const OVERRIDE { return url_; }
-  virtual GURL GetFaviconURL() const OVERRIDE { return GURL(); }
-  virtual base::TimeTicks GetLastActivityTime() const OVERRIDE {
-    return last_activity_time_;
-  }
-  virtual std::string GetParentId() const OVERRIDE { return std::string(); }
-  virtual bool IsAttached() const OVERRIDE {
-    return agent_host_->IsAttached();
-  }
-  virtual scoped_refptr<DevToolsAgentHost> GetAgentHost() const OVERRIDE {
-    return agent_host_;
-  }
-
-  virtual bool Activate() const OVERRIDE {
-    WebContents* web_contents = agent_host_->GetWebContents();
-    if (!web_contents)
-      return false;
-    web_contents->GetDelegate()->ActivateContents(web_contents);
-    return true;
-  }
-
-  virtual bool Close() const OVERRIDE { return false; }
-
- private:
-  scoped_refptr<DevToolsAgentHost> agent_host_;
-  std::string id_;
-  std::string title_;
-  GURL url_;
-  base::TimeTicks last_activity_time_;
-};
-
-Target::Target(WebContents* web_contents) {
-  agent_host_ =
-      DevToolsAgentHost::GetOrCreateFor(web_contents);
-  id_ = agent_host_->GetId();
-  title_ = UTF16ToUTF8(web_contents->GetTitle());
-  url_ = web_contents->GetURL();
-  last_activity_time_ = web_contents->GetLastActiveTime();
-}
-
 // Delegate implementation for the devtools http handler on android. A new
 // instance of this gets created each time devtools is enabled.
-class XWalkDevToolsServerDelegate
+class XWalkAndroidDevToolsHttpHandlerDelegate
   : public content::DevToolsHttpHandlerDelegate {
  public:
-  explicit XWalkDevToolsServerDelegate(
-    const net::UnixDomainServerSocket::AuthCallback& auth_callback)
-    : auth_callback_(auth_callback) {
+  XWalkAndroidDevToolsHttpHandlerDelegate() {
   }
 
-  virtual std::string GetDiscoveryPageHTML() OVERRIDE {
+  std::string GetDiscoveryPageHTML() override {
     return ResourceBundle::GetSharedInstance().GetRawDataResource(
         IDR_DEVTOOLS_FRONTEND_PAGE_HTML).as_string();
   }
 
-  virtual bool BundlesFrontendResources() OVERRIDE {
+  bool BundlesFrontendResources() override {
     return false;
   }
 
-  virtual base::FilePath GetDebugFrontendDir() OVERRIDE {
+  base::FilePath GetDebugFrontendDir() override {
     return base::FilePath();
   }
 
-  virtual std::string GetPageThumbnailData(const GURL& url) OVERRIDE {
-    return std::string();
-  }
-
-  virtual scoped_ptr<content::DevToolsTarget> CreateNewTarget(
-      const GURL&) OVERRIDE {
-    return scoped_ptr<content::DevToolsTarget>();
-  }
-
-  virtual scoped_ptr<net::StreamListenSocket> CreateSocketForTethering(
+  scoped_ptr<net::StreamListenSocket> CreateSocketForTethering(
       net::StreamListenSocket::Delegate* delegate,
-      std::string* name) OVERRIDE {
+      std::string* name) override {
     return scoped_ptr<net::StreamListenSocket>();
   }
+ private:
+  DISALLOW_COPY_AND_ASSIGN(XWalkAndroidDevToolsHttpHandlerDelegate);
+};
 
-  virtual void EnumerateTargets(TargetCallback callback) OVERRIDE {
-    TargetList targets;
-    std::vector<WebContents*> web_contents_list =
-      content::DevToolsAgentHost::GetInspectableWebContents();
-    for (std::vector<WebContents*>::iterator it = web_contents_list.begin();
-       it != web_contents_list.end();
-       ++it) {
-      targets.push_back(new Target(*it));
-    }
-    callback.Run(targets);
-  }
+// Factory for UnixDomainServerSocket.
+class UnixDomainServerSocketFactory
+    : public content::DevToolsHttpHandler::ServerSocketFactory {
+ public:
+  explicit UnixDomainServerSocketFactory(
+      const std::string& socket_name,
+      const net::UnixDomainServerSocket::AuthCallback& auth_callback)
+      : content::DevToolsHttpHandler::ServerSocketFactory(socket_name, 0, 1),
+      auth_callback_(auth_callback) {}
 
  private:
+  // content::DevToolsHttpHandler::ServerSocketFactory.
+  scoped_ptr<net::ServerSocket> Create() const override {
+    return scoped_ptr<net::ServerSocket>(
+        new net::UnixDomainServerSocket(
+            auth_callback_,
+            true /* use_abstract_namespace */));
+  }
+
   const net::UnixDomainServerSocket::AuthCallback auth_callback_;
-  DISALLOW_COPY_AND_ASSIGN(XWalkDevToolsServerDelegate);
+  DISALLOW_COPY_AND_ASSIGN(UnixDomainServerSocketFactory);
 };
 
 }  // namespace
@@ -166,7 +115,8 @@ namespace xwalk {
 XWalkDevToolsServer::XWalkDevToolsServer(const std::string& socket_name)
     : socket_name_(socket_name),
       protocol_handler_(NULL),
-      allowed_uid_(0) {
+      allow_debug_permission_(false),
+      allow_socket_access_(false) {
 }
 
 XWalkDevToolsServer::~XWalkDevToolsServer() {
@@ -178,27 +128,30 @@ XWalkDevToolsServer::~XWalkDevToolsServer() {
 // process and connects to the devtools server.
 bool XWalkDevToolsServer::CanUserConnectToDevTools(
     const net::UnixDomainServerSocket::Credentials& credentials) {
-  if (credentials.user_id == allowed_uid_)
+  if (allow_socket_access_)
     return true;
+  if (allow_debug_permission_)
+    return AuthorizeSocketAccessWithDebugPermission(credentials);
   return content::CanUserConnectToDevTools(credentials);
 }
 
-void XWalkDevToolsServer::Start(bool allow_debug_permission) {
+void XWalkDevToolsServer::Start(bool allow_debug_permission,
+                                bool allow_socket_access) {
+  allow_debug_permission_ = allow_debug_permission;
+  allow_socket_access_ = allow_socket_access;
   if (protocol_handler_)
     return;
 
   net::UnixDomainServerSocket::AuthCallback auth_callback =
-      allow_debug_permission ?
-          base::Bind(&AuthorizeSocketAccessWithDebugPermission) :
-          base::Bind(&content::CanUserConnectToDevTools);
+      base::Bind(&XWalkDevToolsServer::CanUserConnectToDevTools,
+                 base::Unretained(this));
 
+  scoped_ptr<content::DevToolsHttpHandler::ServerSocketFactory> factory(
+      new UnixDomainServerSocketFactory(socket_name_, auth_callback));
   protocol_handler_ = content::DevToolsHttpHandler::Start(
-      new net::deprecated::UnixDomainListenSocketWithAbstractNamespaceFactory(
-          socket_name_,
-          "",  // fallback socket name
-          auth_callback),
-      base::StringPrintf(kFrontEndURL, content::GetWebKitRevision().c_str()),
-      new XWalkDevToolsServerDelegate(auth_callback), base::FilePath());
+      factory.Pass(),
+      base::StringPrintf(kFrontEndURL, BLINK_UPSTREAM_REVISION),
+      new XWalkAndroidDevToolsHttpHandlerDelegate(), base::FilePath());
 }
 
 void XWalkDevToolsServer::Stop() {
@@ -208,14 +161,12 @@ void XWalkDevToolsServer::Stop() {
   // deletion.
   protocol_handler_->Stop();
   protocol_handler_ = NULL;
+  allow_socket_access_ = false;
+  allow_debug_permission_ = false;
 }
 
 bool XWalkDevToolsServer::IsStarted() const {
   return protocol_handler_;
-}
-
-void XWalkDevToolsServer::AllowConnectionFromUid(uid_t uid) {
-  allowed_uid_ = uid;
 }
 
 bool RegisterXWalkDevToolsServer(JNIEnv* env) {
@@ -244,23 +195,16 @@ static void SetRemoteDebuggingEnabled(JNIEnv* env,
                                       jobject obj,
                                       jlong server,
                                       jboolean enabled,
-                                      jboolean allow_debug_permission) {
+                                      jboolean allow_debug_permission,
+                                      jboolean allow_socket_access) {
   XWalkDevToolsServer* devtools_server =
       reinterpret_cast<XWalkDevToolsServer*>(server);
-  if (enabled) {
-    devtools_server->Start(allow_debug_permission);
+  if (enabled == JNI_TRUE) {
+    devtools_server->Start(allow_debug_permission == JNI_TRUE,
+                           allow_socket_access == JNI_TRUE);
   } else {
     devtools_server->Stop();
   }
-}
-
-static void AllowConnectionFromUid(JNIEnv* env,
-                                    jobject obj,
-                                    jlong server,
-                                    jint uid) {
-  XWalkDevToolsServer* devtools_server =
-      reinterpret_cast<XWalkDevToolsServer*>(server);
-  devtools_server->AllowConnectionFromUid((uid_t) uid);
 }
 
 }  // namespace xwalk

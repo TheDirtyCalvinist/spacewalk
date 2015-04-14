@@ -32,7 +32,7 @@
 #include "xwalk/runtime/renderer/android/xwalk_render_process_observer.h"
 #include "xwalk/runtime/renderer/android/xwalk_render_view_ext.h"
 #else
-#include "third_party/WebKit/public/web/WebFrame.h"
+#include "third_party/WebKit/public/web/WebLocalFrame.h"
 #endif
 
 #if defined(OS_TIZEN)
@@ -70,16 +70,16 @@ class XWalkFrameHelper
   virtual ~XWalkFrameHelper() {}
 
   // RenderFrameObserver implementation.
-  virtual void WillReleaseScriptContext(v8::Handle<v8::Context> context,
-                                        int world_id) OVERRIDE {
+  void WillReleaseScriptContext(v8::Handle<v8::Context> context,
+                                int world_id) override {
     if (extension_controller_)
       extension_controller_->WillReleaseScriptContext(
           render_frame()->GetWebFrame(), context);
   }
 
 #if defined(OS_TIZEN)
-  virtual void DidCommitProvisionalLoad(bool is_new_navigation) OVERRIDE {
-    blink::WebFrame* frame = render_frame()->GetWebFrame();
+  void DidCommitProvisionalLoad(bool is_new_navigation) override {
+    blink::WebLocalFrame* frame = render_frame()->GetWebFrame();
     GURL url(frame->document().url());
     if (url.SchemeIs(application::kApplicationScheme)) {
       blink::WebSecurityOrigin origin = frame->document().securityOrigin();
@@ -213,7 +213,7 @@ bool XWalkContentRendererClient::IsLinkVisited(unsigned long long link_hash) { /
 #endif
 
 bool XWalkContentRendererClient::WillSendRequest(blink::WebFrame* frame,
-                     content::PageTransition transition_type,
+                     ui::PageTransition transition_type,
                      const GURL& url,
                      const GURL& first_party_for_cookies,
                      GURL* new_url) {
@@ -248,7 +248,7 @@ bool XWalkContentRendererClient::WillSendRequest(blink::WebFrame* frame,
   // if under WARP mode.
   if (url.GetOrigin() == app_url.GetOrigin() ||
       blink::WebSecurityOrigin::create(app_url).canRequest(url)) {
-    LOG(INFO) << "[PASS] " << origin_url.spec() << " request " << url.spec();
+    DLOG(INFO) << "[PASS] " << origin_url.spec() << " request " << url.spec();
     return false;
   }
 

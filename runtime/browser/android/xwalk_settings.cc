@@ -35,7 +35,7 @@ struct XWalkSettings::FieldIds {
   // JNI is ineffective and should not be used. Please keep in mind that in the
   // legacy WebView the whole Sync method took <1ms on Xoom, and no one is
   // expected to modify settings in performance-critical code.
-  FieldIds() { }
+  FieldIds() = default;
 
   explicit FieldIds(JNIEnv* env) {
     const char* kStringClassName = "Ljava/lang/String;";
@@ -237,7 +237,7 @@ static jstring GetDefaultUserAgent(JNIEnv* env, jclass clazz) {
 }
 
 bool RegisterXWalkSettings(JNIEnv* env) {
-  return RegisterNativesImpl(env) >= 0;
+  return RegisterNativesImpl(env);
 }
 
 }  // namespace xwalk
