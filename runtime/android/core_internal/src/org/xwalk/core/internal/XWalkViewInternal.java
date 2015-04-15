@@ -805,15 +805,15 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         }
     }
 
-    // TODO(yongsheng): this is not public.
-    /**
-     * @hide
-     */
-    public org.xwalk.core.internal.XWalkSettings getSettings() {
-        if (mContent == null) return null;
-        checkThreadSafety();
-        return mContent.getSettings();
-    }
+    // // TODO(yongsheng): this is not public.
+    // /**
+    //  * @hide
+    //  */
+    // public org.xwalk.core.internal.XWalkSettings getSettings() {
+    //     if (mContent == null) return null;
+    //     checkThreadSafety();
+    //     return mContent.getSettings();
+    // }
 
     @XWalkAPI
     public String getUserAgent(){
