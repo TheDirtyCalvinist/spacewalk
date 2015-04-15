@@ -12,6 +12,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -20,6 +21,7 @@ import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
@@ -28,11 +30,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.Override;
+import java.lang.String;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApplicationStatus;
 import org.chromium.base.ApplicationStatus.ActivityStateListener;
@@ -161,9 +164,10 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     private Context mContext;
     private boolean mIsHidden;
     private XWalkActivityStateListener mActivityStateListener;
+    private static final String TAG = XWalkViewInternal.class.getSimpleName();
     private ValueCallback<Uri> mFilePathCallback;
     private String mCameraPhotoPath;
-
+    
     /**
      * Normal reload mode as default.
      * @since 1.0
@@ -805,11 +809,26 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     /**
      * @hide
      */
-    @XWalkAPI
     public org.xwalk.core.internal.XWalkSettings getSettings() {
         if (mContent == null) return null;
         checkThreadSafety();
         return mContent.getSettings();
+    }
+
+    @XWalkAPI
+    public String getUserAgent(){
+        if(getSettings() != null){
+            return getSettings().getUserAgentString();
+        } else {
+            return null;
+        }
+    }
+
+    @XWalkAPI
+    public void setUserAgent(String userAgent){
+        if(getSettings() != null){
+            getSettings().setUserAgentString(userAgent);
+        }
     }
 
     /**
@@ -1017,6 +1036,27 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
             default:
                 break;
         }
+    }
+
+    @XWalkAPI
+    public void setDrawingCacheEnabled(boolean enabled){
+        mContent.setDrawingCacheEnabled(enabled);
+    }
+
+    @XWalkAPI
+    public Object getLastHitTestData(){
+        return mContent.getHitTestData().data();
+    }
+
+    @XWalkAPI
+    public Bitmap getDrawingCache(){
+        return mContent.getDrawingCache();
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        Log.d(TAG, "Touch Event occurred");
+        return mContent.onTouchEvent(event);
     }
 
     /**

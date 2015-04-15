@@ -29,8 +29,6 @@ import org.chromium.base.library_loader.LibraryLoader;
 import org.chromium.base.library_loader.ProcessInitException;
 import org.chromium.content.browser.BrowserStartupController;
 import org.chromium.content.browser.DeviceUtils;
-import org.chromium.content.browser.ResourceExtractor;
-import org.chromium.content.browser.ResourceExtractor.ResourceIntercepter;
 import org.chromium.content.common.ContentSwitches;
 import org.chromium.net.NetworkChangeNotifier;
 
