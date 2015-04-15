@@ -17,7 +17,7 @@
 # Edit these when rolling DEPS.xwalk.
 # -----------------------------------
 
-chromium_crosswalk_rev = 'e39380a3c6d28863a6a2ea758e697116ccef8357'
+chromium_crosswalk_rev = '66f92386886579aca355a580e0acc13dbf390d0e'
 v8_crosswalk_rev = 'd2bddb995a4f0cf5e92b4188e50648e84504f945'
 ozone_wayland_rev = '5d7baa9bc3b8c88e9b7e476e3d6bc8cd44a887fe'
 
@@ -31,6 +31,7 @@ blink_crosswalk_rev = 'a2c8fea09c79eb9ede59e574f4553e34a00f7d83'
 blink_upstream_rev = '188344'
 
 crosswalk_git = 'https://github.com/crosswalk-project'
+spacewalk_git = 'https://github.com/Sencha'
 ozone_wayland_git = 'https://github.com/01org'
 
 # ------------------------------------------------------
@@ -39,12 +40,12 @@ ozone_wayland_git = 'https://github.com/01org'
 # ------------------------------------------------------
 
 solutions = [
-  { 'name': 'src',
-    'url': crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+  { name': 'src',
+    'url': spacewalk_git + '/chromium-spacewalk.git@' + chromium_crosswalk_rev,
     'deps_file': '.DEPS.git',
     'custom_deps': {
       'src':
-        crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+        spacewalk_git + '/chromium-spacewalk.git@' + chromium_crosswalk_rev,
       'src/third_party/WebKit':
         crosswalk_git + '/blink-crosswalk.git@' + blink_crosswalk_rev,
       'src/v8':
