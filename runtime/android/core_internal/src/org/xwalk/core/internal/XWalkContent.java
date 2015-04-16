@@ -814,8 +814,6 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         return mPossiblyStaleHitTestData;
     }
 
-    private native long nativeInit(XWalkWebContentsDelegate webViewContentsDelegate,
-            XWalkContentsClientBridge bridge);
     private native long nativeInit();
     private static native void nativeDestroy(long nativeXWalkContent);
     private native long nativeGetWebContents(long nativeXWalkContent);
