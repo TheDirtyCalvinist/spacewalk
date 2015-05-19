@@ -859,5 +859,5 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private native boolean nativeSetState(long nativeXWalkContent, byte[] state);
     private native void nativeSetBackgroundColor(long nativeXWalkContent, int color);
     private native void nativeUpdateLastHitTestResult(long nativeXWalkContent);
-    private native void nativeRequestNewHitTestDataAt(long nativeXWalkContent, int x, int y);F
+    private native void nativeRequestNewHitTestDataAt(long nativeXWalkContent, int x, int y);
 }
