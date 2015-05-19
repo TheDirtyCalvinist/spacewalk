@@ -17,7 +17,7 @@
 # Edit these when rolling DEPS.xwalk.
 # -----------------------------------
 
-chromium_crosswalk_rev = '40e3f863d0f5c5d197c474a5458d6c302fcec75a'
+chromium_crosswalk_rev = 'f7a2a0314d32564ffdac604d9d37e7cb3389ee6b'
 v8_crosswalk_rev = '53f20fb7cd3cee2e72d3ca31040ddafe8a481b18'
 ozone_wayland_rev = '744467a397b551ce39a4a69ec3ad91e25f70b4b4'
 
@@ -45,7 +45,7 @@ solutions = [
     'deps_file': '.DEPS.git',
     'custom_deps': {
       'src':
-        spacewalk_git + '/chromium-spacewalk.git@',
+        spacewalk_git + '/chromium-spacewalk.git@' + chromium_crosswalk_rev,
       'src/third_party/WebKit':
         crosswalk_git + '/blink-crosswalk.git@' + blink_crosswalk_rev,
       'src/v8':
