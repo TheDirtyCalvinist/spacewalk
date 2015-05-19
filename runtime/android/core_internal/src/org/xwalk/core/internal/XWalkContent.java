@@ -10,9 +10,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Rect;
+import android.graphics.Bitmap;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
+import android.view.MotionEvent;
+import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
 import android.text.TextUtils;
@@ -25,6 +28,7 @@ import android.widget.FrameLayout;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.Runnable;
 import java.lang.annotation.Annotation;
 
 import org.chromium.base.CalledByNative;
@@ -67,6 +71,8 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private XWalkSettings mSettings;
     private XWalkGeolocationPermissions mGeolocationPermissions;
     private XWalkLaunchScreenManager mLaunchScreenManager;
+    private XWalkHitTestDataInternal mPossiblyStaleHitTestData = new XWalkHitTestDataInternal();
+    private double mDIPScale;
     private NavigationController mNavigationController;
     private WebContents mWebContents;
     private boolean mIsLoaded = false;
@@ -188,6 +194,14 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
 
     public void supplyContentsForPopup(XWalkContent newContents) {
         if (mNativeContent == 0) return;
+
+        mContentViewCore.setOnEventRunnable(new Runnable(){
+            public void run(){
+                getHitTestData();
+            }
+        });
+
+        XWalkPreferencesInternal.load(this);
 
         long popupNativeXWalkContent = nativeReleasePopupXWalkContent(mNativeContent);
         if (popupNativeXWalkContent == 0) {
@@ -746,6 +760,20 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     }
 
     @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            int actionIndex = event.getActionIndex();
+            // Note this will trigger IPC back to browser even if nothing is
+            // hit.
+            Log.d(TAG, "Requesting new hit test at " + event.getX(actionIndex) + " " + event.getY(actionIndex));
+            nativeRequestNewHitTestDataAt(mXWalkContent,
+                    (int) Math.round(event.getX(actionIndex) / mDIPScale),
+                    (int) Math.round(event.getY(actionIndex) / mDIPScale));
+        }
+        return mContentView.onTouchEvent(event);
+    }
+
+    @Override
     public void onKeyValueChanged(String key, XWalkPreferencesInternal.PreferenceValue value) {
         if (key == null) return;
         if (key.equals(XWalkPreferencesInternal.REMOTE_DEBUGGING)) {
@@ -776,6 +804,38 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         }
     }
 
+    public void setDrawingCacheEnabled(boolean enabled){
+        mContentViewRenderView.setDrawingCacheEnabled(enabled);
+    }
+
+    public Bitmap getDrawingCache(){
+        View view = mContentViewRenderView.getChildAt(0);
+        if(view instanceof TextureView){
+            return ((TextureView) view).getBitmap();
+        }
+        return super.getDrawingCache();
+    }
+
+    @CalledByNative
+    public void updateHitTestData(int type, String extra, String href, String anchorText, String imgSrc) {
+        mPossiblyStaleHitTestData.hitTestResultType = type;
+        mPossiblyStaleHitTestData.hitTestResultExtraData = extra;
+        mPossiblyStaleHitTestData.href = href;
+        mPossiblyStaleHitTestData.anchorText = anchorText;
+        mPossiblyStaleHitTestData.imgSrc = imgSrc;
+        Log.d(TAG, "Hit Test Data " + mPossiblyStaleHitTestData);
+    }
+
+    public XWalkHitTestDataInternal getHitTestData(){
+        nativeRequestNewHitTestDataAt(mXWalkContent,
+                (int) Math.round(mContentViewCore.getLastDownX() / mDIPScale),
+                (int) Math.round(mContentViewCore.getLastDownY() / mDIPScale));
+        nativeUpdateLastHitTestResult(mXWalkContent);
+        return mPossiblyStaleHitTestData;
+    }
+
+    private native long nativeInit(XWalkWebContentsDelegate webViewContentsDelegate,
+            XWalkContentsClientBridge bridge);
     private native long nativeInit();
     private static native void nativeDestroy(long nativeXWalkContent);
     private native long nativeGetWebContents(long nativeXWalkContent);
@@ -798,4 +858,6 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private native byte[] nativeGetState(long nativeXWalkContent);
     private native boolean nativeSetState(long nativeXWalkContent, byte[] state);
     private native void nativeSetBackgroundColor(long nativeXWalkContent, int color);
+    private native void nativeUpdateLastHitTestResult(long nativeXWalkContent);
+    private native void nativeRequestNewHitTestDataAt(long nativeXWalkContent, int x, int y);F
 }

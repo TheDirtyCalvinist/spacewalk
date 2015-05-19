@@ -77,6 +77,14 @@ class XWalkContent {
                                  jboolean value,
                                  jstring origin);
 
+  void UpdateLastHitTestResult(JNIEnv* env,
+                                jobject obj);
+
+  void RequestNewHitTestDataAt(JNIEnv* env,
+                                 jobject obj,
+                                 jint x,
+                                 jint y);
+
  private:
   JavaObjectWeakGlobalRef java_ref_;
   // TODO(guangzhen): The WebContentsDelegate need to take ownership of

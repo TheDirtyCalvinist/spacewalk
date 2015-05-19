@@ -12,6 +12,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -20,6 +21,7 @@ import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
@@ -28,6 +30,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.Override;
+import java.lang.String;
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -818,10 +822,26 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     /**
      * @hide
      */
-    public XWalkSettings getSettings() {
+    public org.xwalk.core.internal.XWalkSettings getSettings() {
         if (mContent == null) return null;
         checkThreadSafety();
         return mContent.getSettings();
+    }
+
+    @XWalkAPI
+    public String getUserAgent(){
+        if(getSettings() != null){
+            return getSettings().getUserAgentString();
+        } else {
+            return null;
+        }
+    }
+
+    @XWalkAPI
+    public void setUserAgent(String userAgent){
+        if(getSettings() != null){
+            getSettings().setUserAgentString(userAgent);
+        }
     }
 
     /**
@@ -1031,6 +1051,27 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         }
     }
 
+    @XWalkAPI
+    public void setDrawingCacheEnabled(boolean enabled){
+        mContent.setDrawingCacheEnabled(enabled);
+    }
+
+    @XWalkAPI
+    public Object getLastHitTestData(){
+        return mContent.getHitTestData().data();
+    }
+
+    @XWalkAPI
+    public Bitmap getDrawingCache(){
+        return mContent.getDrawingCache();
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        Log.d(TAG, "Touch Event occurred");
+        return mContent.onTouchEvent(event);
+    }
+
     /**
      * Tell the client to show a file chooser.
      * @param uploadFile the callback class to handle the result from caller. It MUST
@@ -1101,7 +1142,6 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         );
         return imageFile;
     }
-
     // For instrumentation test.
     public ContentViewCore getXWalkContentForTest() {
         return mContent.getContentViewCoreForTest();

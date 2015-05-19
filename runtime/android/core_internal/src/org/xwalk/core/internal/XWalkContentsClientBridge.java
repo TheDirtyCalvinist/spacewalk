@@ -496,17 +496,9 @@ class XWalkContentsClientBridge extends XWalkContentsClient
 
     @Override
     public boolean shouldOpenWithDefaultBrowser(String contentUrl) {
-        Intent intent = new Intent();
-        intent.setAction("android.intent.action.VIEW");
-        Uri url = Uri.parse(contentUrl);
-        intent.setData(url);
-        try {
-            mXWalkView.getActivity().startActivity(intent);
-        } catch (ActivityNotFoundException exception) {
-            Log.w(TAG, "Activity not found for Intent:");
-            return false;
+        if (isOwnerActivityRunning()) {
+            return mXWalkUIClient.shouldOpenWithDefaultBrowser(contentUrl);
         }
-
         return true;
     }
 

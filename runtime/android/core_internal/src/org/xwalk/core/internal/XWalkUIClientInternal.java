@@ -12,6 +12,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
+import android.util.Log;
 import android.os.Message;
 import android.view.KeyEvent;
 import android.view.View;
@@ -51,6 +52,8 @@ public class XWalkUIClientInternal {
         BY_USER_GESTURE,
         BY_JAVASCRIPT
     }
+
+    private static final String TAG = XWalkUIClientInternal.class.getSimpleName();
 
     /**
      * Constructor.
@@ -387,7 +390,8 @@ public class XWalkUIClientInternal {
     public void onPageLoadStopped(XWalkViewInternal view, String url, LoadStatusInternal status) {
     }
 
-    private boolean onJsAlert(XWalkViewInternal view, String url, String message,
+    @XWalkAPI
+    public boolean onJsAlert(XWalkViewInternal view, String url, String message,
             XWalkJavascriptResultInternal result) {
         final XWalkJavascriptResultInternal fResult = result;
         AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(mContext);
@@ -446,42 +450,31 @@ public class XWalkUIClientInternal {
         return false;
     }
 
-    private boolean onJsPrompt(XWalkViewInternal view, String url, String message,
+    @XWalkAPI
+    public boolean onJsPrompt(XWalkViewInternal view, String url, String message,
             String defaultValue, XWalkJavascriptResultInternal result) {
-        final XWalkJavascriptResultInternal fResult = result;
-        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(mContext);
-        dialogBuilder.setTitle(mJSPromptTitle)
-                .setMessage(message)
-                .setPositiveButton(mOKButton, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        fResult.confirmWithResult(mPromptText.getText().toString());
-                        dialog.dismiss();
-                    }
-                })
-                // Need to implement 'onClick' and call the dialog.cancel. Otherwise, the
-                // UI will be locked.
-                .setNegativeButton(mCancelButton, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        // This will call OnCancelLisitener.onCancel().
-                        dialog.cancel();
-                    }
-                })
-                .setOnCancelListener(new DialogInterface.OnCancelListener() {
-                    @Override
-                    public void onCancel(DialogInterface dialog) {
-                        fResult.cancel();
-                    }
-                });
-        mPromptText = new EditText(mContext);
-        mPromptText.setVisibility(View.VISIBLE);
-        mPromptText.setText(defaultValue);
-        mPromptText.selectAll();
+        String response = bridgeCall(view, url, message, defaultValue);
+        if(response != null)
+           result.confirmWithResult(response);
+        else
+            result.confirm(); 
+        return true;
+    }
 
-        dialogBuilder.setView(mPromptText);
-        mDialog = dialogBuilder.create();
-        mDialog.show();
+    @XWalkAPI
+    public String bridgeCall(XWalkViewInternal view, String url, String message, String defaultValue){
+        Log.d(TAG, "Test call");
+        return null;
+    }
+
+    @XWalkAPI
+    public boolean onCreateWindow(boolean isDialog, boolean isUserGesture){
+        return false;
+    }
+
+
+    @XWalkAPI
+    public boolean shouldOpenWithDefaultBrowser(String contentUrl) {
         return false;
     }
 }

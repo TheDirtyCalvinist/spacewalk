@@ -31,6 +31,7 @@ blink_crosswalk_rev = '364f122b8482d8b98054de71e837dcef199f4771'
 blink_upstream_rev = '192769'
 
 crosswalk_git = 'https://github.com/crosswalk-project'
+spacewalk_git = 'https://github.com/Sencha'
 ozone_wayland_git = 'https://github.com/01org'
 
 # ------------------------------------------------------
@@ -40,11 +41,11 @@ ozone_wayland_git = 'https://github.com/01org'
 
 solutions = [
   { 'name': 'src',
-    'url': crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+    'url': spacewalk_git + '/chromium-spacewalk.git@',
     'deps_file': '.DEPS.git',
     'custom_deps': {
       'src':
-        crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+        spacewalk_git + '/chromium-spacewalk.git@',
       'src/third_party/WebKit':
         crosswalk_git + '/blink-crosswalk.git@' + blink_crosswalk_rev,
       'src/v8':
