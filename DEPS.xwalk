@@ -17,7 +17,7 @@
 # Edit these when rolling DEPS.xwalk.
 # -----------------------------------
 
-chromium_crosswalk_rev = '38686ce846be0c9d647985c695b9e3ccf824c5d0'
+chromium_crosswalk_rev = 'aa78dbf107c9f7e8b22fa26346068d9759debe29'
 v8_crosswalk_rev = '6f633d938d3ffaf8640cba748810d7f2dd78ca88'
 ozone_wayland_rev = '852cf10085eaddb980107a3f1a768991e7c67480'
 
@@ -31,6 +31,7 @@ blink_crosswalk_rev = 'c1faacbe278583aae55325fb034e0490cbd906c9'
 blink_upstream_rev = '197431'
 
 crosswalk_git = 'https://github.com/crosswalk-project'
+spacewalk_git = 'https://github.com/Sencha'
 ozone_wayland_git = 'https://github.com/01org'
 
 # ------------------------------------------------------
@@ -40,11 +41,11 @@ ozone_wayland_git = 'https://github.com/01org'
 
 solutions = [
   { 'name': 'src',
-    'url': crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+    'url': spacewalk_git + '/chromium-spacewalk.git@',
     'deps_file': '.DEPS.git',
     'custom_deps': {
       'src':
-        crosswalk_git + '/chromium-crosswalk.git@' + chromium_crosswalk_rev,
+        spacewalk_git + '/chromium-spacewalk.git@' + chromium_crosswalk_rev,
       'src/third_party/WebKit':
         crosswalk_git + '/blink-crosswalk.git@' + blink_crosswalk_rev,
       'src/v8':
@@ -52,7 +53,8 @@ solutions = [
 
       # Include OpenCL header files for WebCL support, target version 1.2.
       'src/third_party/khronos/CL':
-        crosswalk_git + '/khronos-cl-api-1.2.git@6f4be98d10f03ce2b12c769cd9835c73a441c00f',
+        'https://cvs.khronos.org/svn/repos/registry/trunk/public/cl/api/1.2@'
+           '28150',
 
       # These directories are not relevant to Crosswalk and can be safely ignored
       # in a checkout. It avoids creating additional directories outside src/ that
@@ -104,15 +106,6 @@ hooks = [
     ],
     'pattern': '.',
     'name': 'upstream_revision'
-  },
-  {
-    'action': [
-      'python',
-      'src/xwalk/tools/patch_skia.py',
-      'src/xwalk/packaging/skia-perf-regression-copy-surface-as-draw.patch'
-     ],
-     'pattern': '.',
-     'name': 'patch_skia_regression'
   }
 ]
 
