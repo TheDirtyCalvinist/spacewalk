@@ -21,11 +21,8 @@ import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.KeyEvent;
-<<<<<<< HEAD
 import android.view.SurfaceView;
-=======
 import android.view.MotionEvent;
->>>>>>> caa0cf8... Long press hit test stuff
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
@@ -184,12 +181,9 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     private Context mContext;
     private boolean mIsHidden;
     private XWalkActivityStateListener mActivityStateListener;
-<<<<<<< HEAD
     private ValueCallback<Uri> mFilePathCallback;
     private String mCameraPhotoPath;
-=======
     private static final String TAG = XWalkViewInternal.class.getSimpleName();
->>>>>>> caa0cf8... Long press hit test stuff
 
     /**
      * Normal reload mode as default.
@@ -1229,13 +1223,10 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         return mContent.getDrawingCache();
     }
 
-<<<<<<< HEAD
-=======
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         Log.d(TAG, "Touch Event occurred");
         return mContent.onTouchEvent(event);
     }
 
->>>>>>> caa0cf8... Long press hit test stuff
 }
