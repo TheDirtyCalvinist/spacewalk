@@ -880,8 +880,6 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         return mContentViewRenderView.getDrawingCache();
     }
 
-    private native long nativeInit(XWalkWebContentsDelegate webViewContentsDelegate,
-            XWalkContentsClientBridge bridge);
     private static native void nativeDestroy(long nativeXWalkContent);
     private native WebContents nativeGetWebContents(long nativeXWalkContent);
     private native long nativeReleasePopupXWalkContent(long nativeXWalkContent);
