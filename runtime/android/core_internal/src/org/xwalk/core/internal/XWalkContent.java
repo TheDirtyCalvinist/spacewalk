@@ -852,8 +852,6 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         return super.getDrawingCache();
     }
 
-    private native long nativeInit();
-
     @CalledByNative
     public void updateHitTestData(int type, String extra, String href, String anchorText, String imgSrc) {
         mPossiblyStaleHitTestData.hitTestResultType = type;
@@ -880,6 +878,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         return mContentViewRenderView.getDrawingCache();
     }
 
+    private native long nativeInit();
     private static native void nativeDestroy(long nativeXWalkContent);
     private native WebContents nativeGetWebContents(long nativeXWalkContent);
     private native long nativeReleasePopupXWalkContent(long nativeXWalkContent);
