@@ -1120,7 +1120,6 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         }
     }
 
-<<<<<<< HEAD
     /**
      * Tell the client to show a file chooser.
      * @param uploadFile the callback class to handle the result from caller. It MUST
