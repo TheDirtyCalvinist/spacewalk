@@ -822,11 +822,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     }
 
     public boolean zoomOut() {
-
-
-    public Bitmap getDrawingCache(){
-        return mContentViewRenderView.getDrawingCache();
-    }if (mNativeContent == 0) return false;
+        if (mNativeContent == 0) return false;
         return mContentViewCore.zoomOut();
     }
 
@@ -863,11 +859,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mPossiblyStaleHitTestData.href = href;
         mPossiblyStaleHitTestData.anchorText = anchorText;
         mPossiblyStaleHitTestData.imgSrc = imgSrc;
-
-
-    public Bitmap getDrawingCache(){
-        return mContentViewRenderView.getDrawingCache();
-    }Log.d(TAG, "Hit Test Data " + mPossiblyStaleHitTestData);
+        Log.d(TAG, "Hit Test Data " + mPossiblyStaleHitTestData);
     }
 
     public XWalkHitTestDataInternal getHitTestData(){
