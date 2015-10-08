@@ -70,7 +70,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     private XWalkViewInternal mXWalkView;
     private XWalkContentsClientBridge mContentsClientBridge;
     private XWalkContentsIoThreadClient mIoThreadClient;
-    private XWalkWebContentsDelegateAdapter mXWalkContentsDelegateAdapter;
+    private XWalkWebContentsDelegateAdapter mNativeContentsDelegateAdapter;
     private XWalkSettings mSettings;
     private XWalkGeolocationPermissions mGeolocationPermissions;
     private XWalkLaunchScreenManager mLaunchScreenManager;
@@ -110,7 +110,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         // Initialize the WebContensDelegate.
         mXWalkView = xwView;
         mContentsClientBridge = new XWalkContentsClientBridge(mXWalkView);
-        mXWalkContentsDelegateAdapter = new XWalkWebContentsDelegateAdapter(
+        mNativeContentsDelegateAdapter = new XWalkWebContentsDelegateAdapter(
             mContentsClientBridge);
         mIoThreadClient = new XWalkIoThreadClientImpl();
 
@@ -177,7 +177,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mContentsClientBridge.installWebContentsObserver(mWebContents);
 
         // Set DIP scale.
-        mDIPScale = DeviceDisplayInfo.create(context).getDIPScale();
+        mDIPScale = DeviceDisplayInfo.create(getContext()).getDIPScale();
         mContentsClientBridge.setDIPScale(mDIPScale);
 
         mContentViewCore.setDownloadDelegate(mContentsClientBridge);
@@ -191,7 +191,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         // loaded by XMLHttpRequest.
         mSettings.setAllowFileAccessFromFileURLs(true);
 
-        nativeSetJavaPeers(mNativeContent, this, mXWalkContentsDelegateAdapter, mContentsClientBridge,
+        nativeSetJavaPeers(mNativeContent, this, mNativeContentsDelegateAdapter, mContentsClientBridge,
                 mIoThreadClient, mContentsClientBridge.getInterceptNavigationDelegate());
     }
 
@@ -773,7 +773,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
             // Note this will trigger IPC back to browser even if nothing is
             // hit.
             Log.d(TAG, "Requesting new hit test at " + event.getX(actionIndex) + " " + event.getY(actionIndex));
-            nativeRequestNewHitTestDataAt(mXWalkContent,
+            nativeRequestNewHitTestDataAt(mNativeContent,
                     (int) Math.round(event.getX(actionIndex) / mDIPScale),
                     (int) Math.round(event.getY(actionIndex) / mDIPScale));
         }
@@ -822,7 +822,11 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     }
 
     public boolean zoomOut() {
-        if (mNativeContent == 0) return false;
+
+
+    public Bitmap getDrawingCache(){
+        return mContentViewRenderView.getDrawingCache();
+    }if (mNativeContent == 0) return false;
         return mContentViewCore.zoomOut();
     }
 
@@ -859,23 +863,23 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mPossiblyStaleHitTestData.href = href;
         mPossiblyStaleHitTestData.anchorText = anchorText;
         mPossiblyStaleHitTestData.imgSrc = imgSrc;
-        Log.d(TAG, "Hit Test Data " + mPossiblyStaleHitTestData);
+
+
+    public Bitmap getDrawingCache(){
+        return mContentViewRenderView.getDrawingCache();
+    }Log.d(TAG, "Hit Test Data " + mPossiblyStaleHitTestData);
     }
 
     public XWalkHitTestDataInternal getHitTestData(){
-        nativeRequestNewHitTestDataAt(mXWalkContent,
+        nativeRequestNewHitTestDataAt(mNativeContent,
                 (int) Math.round(mContentViewCore.getLastDownX() / mDIPScale),
                 (int) Math.round(mContentViewCore.getLastDownY() / mDIPScale));
-        nativeUpdateLastHitTestResult(mXWalkContent);
+        nativeUpdateLastHitTestResult(mNativeContent);
         return mPossiblyStaleHitTestData;
     }
 
     public void setDrawingCacheEnabled(boolean enabled){
         mContentViewRenderView.setDrawingCacheEnabled(enabled);
-    }
-
-    public Bitmap getDrawingCache(){
-        return mContentViewRenderView.getDrawingCache();
     }
 
     private native long nativeInit();

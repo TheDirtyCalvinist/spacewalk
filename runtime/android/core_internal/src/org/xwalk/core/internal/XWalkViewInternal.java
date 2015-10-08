@@ -183,7 +183,6 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     private XWalkActivityStateListener mActivityStateListener;
     private ValueCallback<Uri> mFilePathCallback;
     private String mCameraPhotoPath;
-    private static final String TAG = XWalkViewInternal.class.getSimpleName();
 
     /**
      * Normal reload mode as default.
