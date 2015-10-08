@@ -1180,6 +1180,10 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         return true;
     }
 
+    public void updateHitTestData(){
+        mContent.getHitTestData();
+    }
+
     @XWalkAPI
     public Object getLastHitTestData() {
         return mContent.getHitTestData().data();
