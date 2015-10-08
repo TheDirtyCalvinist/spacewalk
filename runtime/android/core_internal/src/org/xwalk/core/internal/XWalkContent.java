@@ -882,7 +882,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
             long nativeXWalkContent,
             XWalkContent xwalkContent,
             XWalkWebContentsDelegateAdapter xwalkContentsDelegate,
-            XWalkgetDrawingCacheContentsClientBridge contentsClientBridge,
+            XWalkContentsClientBridge contentsClientBridge,
             XWalkContentsIoThreadClient ioThreadClient,
             InterceptNavigationDelegate navigationInterceptionDelegate);
     private native void nativeClearCache(long nativeXWalkContent, boolean includeDiskFiles);
