@@ -873,7 +873,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
     public void setDrawingCacheEnabled(boolean enabled){
         mContentViewRenderView.setDrawingCacheEnabled(enabled);
     }
-getDrawingCache
+
     private native long nativeInit();
     private static native void nativeDestroy(long nativeXWalkContent);
     private native WebContents nativeGetWebContents(long nativeXWalkContent);
@@ -888,7 +888,7 @@ getDrawingCache
     private native void nativeClearCache(long nativeXWalkContent, boolean includeDiskFiles);
     private native String nativeDevToolsAgentId(long nativeXWalkContent);
     private native String nativeGetVersion(long nativeXWalkContent);
-    private nativgetDrawingCachee void nativeSetJsOnlineProperty(long nativeXWalkContent, boolean networkUp);
+    private native void nativeSetJsOnlineProperty(long nativeXWalkContent, boolean networkUp);
     private native boolean nativeSetManifest(long nativeXWalkContent, String path, String manifest);
     private native int nativeGetRoutingID(long nativeXWalkContent);
     private native void nativeInvokeGeolocationCallback(
