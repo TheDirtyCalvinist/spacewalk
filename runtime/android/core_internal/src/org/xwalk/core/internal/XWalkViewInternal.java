@@ -389,6 +389,12 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
                 XWalkPathHelper.setExternalCacheDirectory(extCacheDir.getPath());
             }
         }
+        setOnTouchListener(new View.OnTouchListener() {
+            public boolean onTouch(View v, MotionEvent event) {
+                Log.d(TAG, "Through the on touch listener: " + event.getAction());
+                updateHitTestData();
+            }
+        });
     }
 
     /**

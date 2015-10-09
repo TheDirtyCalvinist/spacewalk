@@ -193,6 +193,8 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
 
         nativeSetJavaPeers(mNativeContent, this, mNativeContentsDelegateAdapter, mContentsClientBridge,
                 mIoThreadClient, mContentsClientBridge.getInterceptNavigationDelegate());
+
+
     }
 
     public void supplyContentsForPopup(XWalkContent newContents) {
