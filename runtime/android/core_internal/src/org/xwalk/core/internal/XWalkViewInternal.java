@@ -21,6 +21,7 @@ import android.provider.MediaStore;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.SurfaceView;
 import android.view.MotionEvent;
 import android.view.ViewGroup;
@@ -389,12 +390,6 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
                 XWalkPathHelper.setExternalCacheDirectory(extCacheDir.getPath());
             }
         }
-        setOnTouchListener(new View.OnTouchListener() {
-            public boolean onTouch(View v, MotionEvent event) {
-                Log.d(TAG, "Through the on touch listener: " + event.getAction());
-                updateHitTestData();
-            }
-        });
     }
 
     /**
@@ -1186,8 +1181,12 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
         return true;
     }
 
-    public void updateHitTestData(){
-        mContent.getHitTestData();
+    public void requestNewHitTestData() {
+        mContent.requestNewHitTestData();
+    }
+
+    public void requestNewHitTestDataAt(double x, double y) {
+        mContent.requestNewHitTestDataAt(x, y);
     }
 
     @XWalkAPI
@@ -1242,11 +1241,4 @@ public class XWalkViewInternal extends android.widget.FrameLayout {
     public Bitmap getDrawingCache(){
         return mContent.getDrawingCache();
     }
-
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        Log.d(TAG, "Touch Event occurred");
-        return mContent.onTouchEvent(event);
-    }
-
 }

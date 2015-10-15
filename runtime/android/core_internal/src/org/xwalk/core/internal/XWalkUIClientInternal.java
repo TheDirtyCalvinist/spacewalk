@@ -417,22 +417,22 @@ public class XWalkUIClientInternal {
                 .setCancelable(true)
                 .setPositiveButton(mContext.getString(android.R.string.ok),
                         new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        fResult.confirm();
-                        dialog.dismiss();
-                    }
-                })
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                fResult.confirm();
+                                dialog.dismiss();
+                            }
+                        })
                 // Need to implement 'onClick' and call the dialog.cancel. Otherwise, the
                 // UI will be locked.
                 .setNegativeButton(mContext.getString(android.R.string.cancel),
                         new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        // This will call OnCancelLisitener.onCancel().
-                        dialog.cancel();
-                    }
-                })
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                // This will call OnCancelLisitener.onCancel().
+                                dialog.cancel();
+                            }
+                        })
                 .setOnCancelListener(new DialogInterface.OnCancelListener() {
                     @Override
                     public void onCancel(DialogInterface dialog) {
@@ -483,5 +483,10 @@ public class XWalkUIClientInternal {
         mDialog = dialogBuilder.create();
         mDialog.show();
         return false;
+    }
+
+    @XWalkAPI
+    public boolean shouldCreateWebContents(String contentUrl) {
+        return true;
     }
 }

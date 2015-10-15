@@ -507,7 +507,9 @@ class XWalkContentsClientBridge extends XWalkContentsClient
 
     @Override
     public boolean shouldCreateWebContents(String contentUrl) {
-        return true;
+        return (mXWalkUIClient != null && isOwnerActivityRunning()) ?
+                mXWalkUIClient.shouldCreateWebContents(contentUrl) :
+                true;
     }
 
     @Override

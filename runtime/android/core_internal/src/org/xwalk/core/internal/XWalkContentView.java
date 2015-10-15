@@ -11,11 +11,15 @@ import android.os.Bundle;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.MotionEvent;
+import android.util.Log;
 
 import org.chromium.content.browser.ContentView;
 import org.chromium.content.browser.ContentViewCore;
 
 public class XWalkContentView extends ContentView {
+
+    private static String TAG = "XWalkContentView";
     private XWalkViewInternal mXWalkView;
 
     XWalkContentView(Context context, ContentViewCore cvc, XWalkViewInternal xwView) {
@@ -75,8 +79,21 @@ public class XWalkContentView extends ContentView {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        Log.d(TAG, "Touch Event occurred");
-        return mXWalkView.onTouchEvent(event);
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            int actionIndex = event.getActionIndex();
+            // Note this will trigger IPC back to browser even if nothing is
+            // hit.
+            Log.d(TAG, "Requesting new hit test on down at " + event.getX(actionIndex) + " " + event.getY(actionIndex));
+            mXWalkView.requestNewHitTestDataAt(event.getX(actionIndex), event.getY(actionIndex));
+        }
+        return super.onTouchEvent(event);
+    }
+
+    @Override
+    public boolean performLongClick() {
+        mXWalkView.requestNewHitTestData();
+        showContextMenu();
+        return false;
     }
 
 }

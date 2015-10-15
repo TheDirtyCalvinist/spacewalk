@@ -220,7 +220,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mContentViewCore.onShow();
         mContentViewCore.setOnEventRunnable(new Runnable(){
             public void run(){
-                getHitTestData();
+                requestNewHitTestData();
             }
         });
 
@@ -779,7 +779,7 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
                     (int) Math.round(event.getX(actionIndex) / mDIPScale),
                     (int) Math.round(event.getY(actionIndex) / mDIPScale));
         }
-        return mContentView.onTouchEvent(event);
+        return super.onTouchEvent(event);
     }
 
     @Override
@@ -861,14 +861,28 @@ class XWalkContent extends FrameLayout implements XWalkPreferencesInternal.KeyVa
         mPossiblyStaleHitTestData.href = href;
         mPossiblyStaleHitTestData.anchorText = anchorText;
         mPossiblyStaleHitTestData.imgSrc = imgSrc;
-        Log.d(TAG, "Hit Test Data " + mPossiblyStaleHitTestData);
+        Log.d(TAG, "Hit Test Data updated " + mPossiblyStaleHitTestData);
     }
 
-    public XWalkHitTestDataInternal getHitTestData(){
+    public void requestNewHitTestData(){
+
+        Log.d(TAG, "Requesting new hit test at " + mContentViewCore.getLastDownX() / mDIPScale + " " + mContentViewCore.getLastDownY() / mDIPScale);
         nativeRequestNewHitTestDataAt(mNativeContent,
                 (int) Math.round(mContentViewCore.getLastDownX() / mDIPScale),
                 (int) Math.round(mContentViewCore.getLastDownY() / mDIPScale));
-        nativeUpdateLastHitTestResult(mNativeContent);
+//        nativeUpdateLastHitTestResult(mNativeContent);
+    }
+
+    public void requestNewHitTestDataAt(double x, double y){
+        Log.d(TAG, "Requesting new hit test at " + x + " " + y);
+        nativeRequestNewHitTestDataAt(mNativeContent,
+                (int) Math.round(x / mDIPScale),
+                (int) Math.round(y / mDIPScale));
+//        nativeUpdateLastHitTestResult(mNativeContent);
+    }
+
+
+    public XWalkHitTestDataInternal getHitTestData(){
         return mPossiblyStaleHitTestData;
     }
 
