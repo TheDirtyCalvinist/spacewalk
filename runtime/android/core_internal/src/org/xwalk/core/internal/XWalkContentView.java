@@ -74,9 +74,10 @@ public class XWalkContentView extends ContentView {
     }
 
     @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        Log.d(TAG, "Touch Event occurred");
-        return mXWalkView.onTouchEvent(event);
+    public boolean performLongClick() {
+        mXWalkView.requestNewHitTestData();
+        showContextMenu();
+        return false;
     }
 
 }
