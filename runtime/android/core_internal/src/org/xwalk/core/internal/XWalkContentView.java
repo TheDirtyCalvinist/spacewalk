@@ -1,3 +1,4 @@
+
 // Copyright 2012 The Chromium Authors. All rights reserved.
 // Copyright (c) 2015 Intel Corporation. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
@@ -75,18 +76,6 @@ public class XWalkContentView extends ContentView {
         } else {
             return super.getAccessibilityNodeProvider();
         }
-    }
-
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-            int actionIndex = event.getActionIndex();
-            // Note this will trigger IPC back to browser even if nothing is
-            // hit.
-            Log.d(TAG, "Requesting new hit test on down at " + event.getX(actionIndex) + " " + event.getY(actionIndex));
-            mXWalkView.requestNewHitTestDataAt(event.getX(actionIndex), event.getY(actionIndex));
-        }
-        return super.onTouchEvent(event);
     }
 
     @Override
